@@ -1,0 +1,69 @@
+import backgroundImage from "../assets/BANTAI-background.png";
+import heroImage from "../assets/BANTAI-3D.png";
+
+export default function Hero() {
+  return (
+    <section
+      id="home"
+      className="relative min-h-[700px] overflow-hidden bg-black"
+    >
+       {/*Background Image*/}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: `url(${backgroundImage})`,
+        }}
+      />
+
+       {/* Dark Overlay */}
+      <div className="absolute inset-0 bg-black/30" />
+
+      <div className="absolute right-[15%] top-[25%] h-[500px] w-[500px] rounded-full bg-lime-400/10 blur-[120px]" />
+
+      <div className="relative mx-auto grid min-h-[700px] max-w-7xl items-center gap-10 px-6 pb-20 pt-32 lg:grid-cols-2 lg:px-10">
+
+        <div className="relative z-10 max-w-2xl">
+
+          <p className="mb-5 text-xs font-semibold uppercase tracking-[0.3em] text-lime-400">
+            AI-Powered Email Security
+          </p>
+
+          <h1 className="text-5xl font-black leading-[0.95] tracking-tight text-white sm:text-6xl lg:text-7xl">
+            Stop Phishing
+            <br />
+            Attacks Before
+            <br />
+            They Strike.
+          </h1>
+
+          <p className="mt-7 max-w-lg text-base leading-7 text-zinc-400 sm:text-lg">
+            The XGBoost-powered threat analysis engine.
+            Empower your users with rapid phishing detection
+            and SHAP-driven explainability.
+          </p>
+
+          <div className="mt-8">
+            <a
+              href="#analyze"
+              className="inline-flex items-center gap-3 rounded-full bg-lime-400 px-7 py-4 text-sm font-bold text-black transition-all hover:bg-lime-300 hover:shadow-[0_0_30px_rgba(190,255,0,0.35)]"
+            >
+              Scan an Email
+              <span className="text-lg">›</span>
+            </a>
+          </div>
+
+        </div>
+
+        {/*Hero Image*/}
+        <div className="relative h-[520px]">
+        <img
+            src={heroImage}
+            alt="BANTAI email threat analysis"
+            className="absolute left-1/2 top-1/2 w-[700px] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain"
+        />
+        </div>
+
+      </div>
+    </section>
+  );
+}
