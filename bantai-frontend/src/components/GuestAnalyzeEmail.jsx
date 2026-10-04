@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import logo from "../assets/BANTAI-logo.png";
 import shieldIcon from "../assets/shield-scan.png";
 import uploadIcon from "../assets/upload-icon.png";
 
