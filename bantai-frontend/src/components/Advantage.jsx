@@ -36,15 +36,15 @@ export default function Advantage() {
 
         {/* Heading */}
         <div className="mb-14">
-          <p className="mb-4 text-xs font-bold uppercase tracking-[0.25em] text-lime-400">
+        <p className="mb-4 text-xs font-bold uppercase tracking-[0.25em] text-lime-400">
             The BANTAI Advantage
-          </p>
+        </p>
 
-          <h2 className="max-w-4xl text-4xl font-black leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
+        <h2 className="max-w-6xl text-4xl font-black leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
             Algorithmic precision meets
             <br />
             human-centric explainability.
-          </h2>
+        </h2>
         </div>
 
         {/* Cards */}

@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 export default function CTA() {
   return (
     <section
@@ -24,12 +26,12 @@ export default function CTA() {
 
             <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">
 
-              <a
-                href="#login"
+              <Link
+                to="/login"
                 className="rounded-full bg-lime-400 px-9 py-3.5 text-sm font-bold text-black transition-all hover:bg-lime-300 hover:shadow-[0_0_25px_rgba(190,255,0,0.3)]"
               >
                 LOGIN
-              </a>
+              </Link>
 
               <a
                 href="#resources"
