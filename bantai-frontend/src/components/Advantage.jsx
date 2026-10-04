@@ -29,7 +29,7 @@ const advantages = [
 export default function Advantage() {
   return (
     <section
-      id="solutions"
+      id="advantages"
       className="bg-black px-6 py-24 lg:px-10"
     >
       <div className="mx-auto max-w-7xl">
@@ -84,6 +84,7 @@ export default function Advantage() {
 
             </article>
           ))}
+
         </div>
 
       </div>

@@ -1,42 +1,61 @@
 import { Link } from "react-router-dom";
 
-export default function Navbar() {
+function Navbar() {
   return (
-    <nav className="absolute left-0 right-0 top-0 z-50">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-10">
-
-        {/* Logo */}
-        <a
-          href="#home"
-          className="text-2xl font-black italic tracking-tight text-white">
-          BANTAI<span className="text-lime-400">.</span>
-        </a>
+    <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950">
+      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
+        {/* BANTAI */}
+        <Link to="/" className="flex items-center">
+          <span className="text-2xl font-black italic tracking-tight text-white">
+            BANTAI<span className="text-lime-400">.</span>
+          </span>
+        </Link>
 
         {/* Navigation */}
-        <div className="flex items-center gap-10 text-sm text-zinc-400">
-          <a
-            href="#platform"
-            className="transition-colors hover:text-white"
-          >
-            Platform
-          </a>
+        <div className="flex items-center gap-8">
+          <div className="hidden items-center gap-7 md:flex">
+            <a
+              href="#technology"
+              className="text-sm font-medium text-zinc-500 transition duration-200 hover:text-white"
+            >
+              Technology
+            </a>
 
-          <a
-            href="#solutions"
-            className="transition-colors hover:text-white"
-          >
-            Solutions
-          </a>
+            <a
+              href="#advantages"
+              className="text-sm font-medium text-zinc-500 transition duration-200 hover:text-white"
+            >
+              Advantages
+            </a>
 
-          <a
-            href="#resources"
-            className="transition-colors hover:text-white"
-          >
-            Resources
-          </a>
+            <a
+              href="#about"
+              className="text-sm font-medium text-zinc-500 transition duration-200 hover:text-white"
+            >
+              About
+            </a>
+          </div>
+
+          {/* Authentication */}
+          <div className="flex items-center gap-3">
+            <Link
+              to="/login"
+              className="rounded-lg border border-lime-400 px-4 py-2 text-sm font-semibold text-lime-400 transition duration-200 hover:bg-lime-400 hover:text-black"
+            >
+              Log In
+            </Link>
+
+            <Link
+              to="/signup"
+              className="rounded-lg border border-lime-400 bg-lime-400 px-4 py-2 text-sm font-bold text-black transition duration-200 hover:bg-transparent hover:text-lime-400 focus:bg-transparent focus:text-lime-400 focus:outline-none"
+            >
+              Sign Up
+            </Link>
+          </div>
         </div>
-
       </div>
     </nav>
   );
 }
+
+export default Navbar;

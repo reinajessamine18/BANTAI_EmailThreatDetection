@@ -4,6 +4,7 @@ import xgboostIcon from "../assets/xgboost-icon.png";
 import shapIcon from "../assets/shap-icon.png";
 import sqliteIcon from "../assets/sqlite-icon.png";
 
+
 const technologies = [
   {
     name: "React",
@@ -29,7 +30,10 @@ const technologies = [
 
 export default function TechStack() {
   return (
-    <section className="border-b border-white/5 bg-black px-6 pb-24 pt-4">
+    <section
+      id="technology"
+      className="scroll-mt-20 border-b border-white/5 bg-black px-6 pb-24 pt-4"
+    >
       <div className="mx-auto max-w-5xl">
 
         <p className="mb-8 text-center text-[9px] font-semibold uppercase tracking-[0.35em] text-zinc-600">
