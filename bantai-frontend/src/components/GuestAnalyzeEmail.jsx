@@ -46,13 +46,8 @@ function GuestAnalyzeEmail() {
       <header className="border-b border-zinc-800 bg-zinc-950">
         <div className="mx-auto flex h-20 max-w-7xl items-center px-6 lg:px-10">
             <Link to="/" className="flex items-center">
-            <img
-                src={logo}
-                alt="BANTAI logo"
-                className="h-9 w-9 object-contain"
-            />
-
-            <span className="ml-3 text-xl font-black tracking-tight">
+            
+            <span className="text-2xl font-black italic tracking-tight text-white">
                 BANTAI<span className="text-lime-400">.</span>
             </span>
             </Link>

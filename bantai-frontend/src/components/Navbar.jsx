@@ -8,9 +8,8 @@ export default function Navbar() {
         {/* Logo */}
         <a
           href="#home"
-          className="text-2xl font-black italic tracking-tight text-white"
-        >
-          BANTAI
+          className="text-2xl font-black italic tracking-tight text-white">
+          BANTAI<span className="text-lime-400">.</span>
         </a>
 
         {/* Navigation */}

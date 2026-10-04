@@ -10,30 +10,70 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
   const navigate = useNavigate();
 
   const handleSubmit = (event) => {
     event.preventDefault();
 
+    setError("");
+
+    const storedUser = localStorage.getItem("bantaiUser");
+
+    if (!storedUser) {
+      setError(
+        "No BANTAI account was found. Please create an account first."
+      );
+      return;
+    }
+
+    let user;
+
+    try {
+      user = JSON.parse(storedUser);
+    } catch {
+      setError("Unable to verify account information.");
+      return;
+    }
+
+    const storedEmail = (user.email || "")
+      .trim()
+      .toLowerCase();
+
+    const enteredEmail = email
+      .trim()
+      .toLowerCase();
+
+    if (enteredEmail !== storedEmail) {
+      setError("Invalid username or password.");
+      return;
+    }
+
+    /*
+      Prototype authentication only.
+
+      If the account has a stored prototype password,
+      verify it. Older accounts without one are still
+      allowed to sign in until the backend is connected.
+    */
+    if (user.password && user.password !== password) {
+      setError("Invalid username or password.");
+      return;
+    }
+
     localStorage.setItem(
       "bantaiAuthenticated",
       "true"
     );
 
-    const existingUser = localStorage.getItem("bantaiUser");
-
-    if (!existingUser) {
-      localStorage.setItem(
-        "bantaiUser",
-        JSON.stringify({
-          name: email
-            ? email.split("@")[0]
-            : "BANTAI User",
-          email: email,
-        })
-      );
-    }
+    localStorage.setItem(
+      "bantaiUser",
+      JSON.stringify({
+        ...user,
+        email: email.trim(),
+      })
+    );
 
     navigate("/app/dashboard");
   };
@@ -45,24 +85,19 @@ function Login() {
         backgroundImage: `url(${backgroundImage})`,
       }}
     >
-
       <div className="absolute inset-0 bg-black/55" />
 
       <div className="relative z-10 flex min-h-screen flex-col">
 
         <div className="flex flex-1 items-center justify-center px-6 py-12">
-
           <div className="w-full max-w-md rounded-2xl border border-zinc-800/80 bg-black/80 p-8 shadow-2xl backdrop-blur-md sm:p-10">
 
-            {/* HEADER */}
+            {/* Header */}
             <div className="mb-8 text-center">
-
               <div className="mb-5">
-
-                <span className="text-3xl font-black tracking-tight text-white">
+                <span className="text-3xl font-black italic tracking-tight text-white">
                   BANTAI<span className="text-lime-400">.</span>
                 </span>
-
               </div>
 
               <h1 className="text-2xl font-bold tracking-tight text-white">
@@ -72,18 +107,14 @@ function Login() {
               <p className="mt-2 text-sm text-zinc-500">
                 Access the BANTAI threat intelligence platform.
               </p>
-
             </div>
 
-            {/* FORM */}
             <form
               onSubmit={handleSubmit}
               className="space-y-5"
             >
-
-              {/* EMAIL */}
+              {/* Username */}
               <div>
-
                 <label
                   htmlFor="username"
                   className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-400"
@@ -96,20 +127,20 @@ function Login() {
                   name="username"
                   type="email"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setError("");
+                  }}
                   placeholder="name@company.com"
                   autoComplete="username"
                   required
                   className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400"
                 />
-
               </div>
 
-              {/* PASSWORD */}
+              {/* Password */}
               <div>
-
                 <div className="mb-2 flex items-center justify-between">
-
                   <label
                     htmlFor="password"
                     className="block text-xs font-bold uppercase tracking-wider text-zinc-400"
@@ -123,17 +154,18 @@ function Login() {
                   >
                     Forgot password?
                   </Link>
-
                 </div>
 
                 <div className="relative">
-
                   <input
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}
                     value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      setError("");
+                    }}
                     placeholder="••••••••••••"
                     autoComplete="current-password"
                     required
@@ -142,7 +174,9 @@ function Login() {
 
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
+                    onClick={() =>
+                      setShowPassword(!showPassword)
+                    }
                     aria-label={
                       showPassword
                         ? "Hide password"
@@ -150,20 +184,24 @@ function Login() {
                     }
                     className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 transition hover:bg-white/10"
                   >
-
                     <img
                       src={eyeIcon}
                       alt=""
                       className="h-5 w-5 object-contain"
                     />
-
                   </button>
-
                 </div>
-
               </div>
 
-              {/* SIGN IN */}
+              {error && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
+                  <p className="text-xs leading-5 text-red-400">
+                    {error}
+                  </p>
+                </div>
+              )}
+
+              {/* Sign In */}
               <button
                 type="submit"
                 className="w-full rounded-lg bg-lime-400 px-6 py-3.5 text-sm font-bold uppercase tracking-wider text-black transition hover:bg-lime-300 active:scale-[0.99]"
@@ -171,9 +209,8 @@ function Login() {
                 Sign In
               </button>
 
-              {/* OR */}
+              {/* Divider */}
               <div className="flex items-center gap-4 py-1">
-
                 <div className="h-px flex-1 bg-zinc-800" />
 
                 <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
@@ -181,7 +218,6 @@ function Login() {
                 </span>
 
                 <div className="h-px flex-1 bg-zinc-800" />
-
               </div>
 
               {/* SSO */}
@@ -189,7 +225,6 @@ function Login() {
                 type="button"
                 className="flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-700 bg-zinc-900/70 px-6 py-3.5 text-sm font-semibold text-white transition hover:border-zinc-500 hover:bg-zinc-800"
               >
-
                 <img
                   src={shieldIcon}
                   alt=""
@@ -199,14 +234,11 @@ function Login() {
                 <span>
                   Sign in with SSO (SAML)
                 </span>
-
               </button>
-
             </form>
 
-            {/* SIGN UP */}
+            {/* Signup */}
             <div className="mt-6 text-center">
-
               <p className="text-xs text-zinc-500">
                 Don't have a BANTAI account?
               </p>
@@ -217,37 +249,13 @@ function Login() {
               >
                 Create an account
               </Link>
-
             </div>
-
-            {/* STATUS */}
-            <div className="mt-8 flex items-center justify-center gap-2 text-xs">
-
-              <span className="h-2 w-2 rounded-full bg-lime-400 shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
-
-              <span className="font-medium text-zinc-400">
-                System Online
-              </span>
-
-              <span className="text-zinc-700">
-                |
-              </span>
-
-              <span className="font-mono text-zinc-500">
-                v4.0.2-stable
-              </span>
-
-            </div>
-
           </div>
-
         </div>
 
-        {/* FOOTER */}
+        {/* Footer */}
         <footer className="px-6 pb-7 text-center">
-
           <div className="flex items-center justify-center gap-2">
-
             <img
               src={lockIcon}
               alt=""
@@ -255,16 +263,13 @@ function Login() {
             />
 
             <p className="text-[11px] leading-5 text-zinc-500">
-              Protected by end-to-end encryption.
-              Unauthorized access is strictly prohibited.
+              Protected by end-to-end encryption. Unauthorized
+              access is strictly prohibited.
             </p>
-
           </div>
-
         </footer>
 
       </div>
-
     </main>
   );
 }
