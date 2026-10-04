@@ -28,19 +28,12 @@ import Settings from "./components/Settings";
 function LandingPage() {
   return (
     <main className="bg-black text-white">
-
       <Navbar />
-
       <Hero />
-
       <TechStack />
-
       <Advantage />
-
       <CTA />
-
       <Footer />
-
     </main>
   );
 }
@@ -49,7 +42,6 @@ function LandingPage() {
 function App() {
   return (
     <BrowserRouter>
-
       <Routes>
 
         {/* LANDING PAGE */}
@@ -57,7 +49,6 @@ function App() {
           path="/"
           element={<LandingPage />}
         />
-
 
         {/* AUTHENTICATION */}
         <Route
@@ -75,13 +66,11 @@ function App() {
           element={<ForgotPassword />}
         />
 
-
         {/* GUEST EMAIL ANALYSIS */}
         <Route
           path="/analyze"
           element={<GuestAnalyzeEmail />}
         />
-
 
         {/* AUTHENTICATED APPLICATION */}
         <Route element={<DashboardLayout />}>
@@ -108,7 +97,6 @@ function App() {
 
         </Route>
 
-
         {/* UNKNOWN ROUTES */}
         <Route
           path="*"
@@ -116,7 +104,6 @@ function App() {
         />
 
       </Routes>
-
     </BrowserRouter>
   );
 }
