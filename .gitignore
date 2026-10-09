@@ -1,0 +1,7 @@
+# Personal ML OpenCode instructions
+machine-learning/AGENTS.md
+
+# Local environment variables
+.env
+.env.*
+!.env.example
