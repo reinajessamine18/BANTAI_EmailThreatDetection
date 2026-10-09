@@ -1,0 +1,51 @@
+{
+  "experiment": "BANTAI text-classification baseline",
+  "source_file": "Balanced_Dataset.csv",
+  "source_sha256": "ac83bf86beabbff654848e6f94389c0723d100865a3f7f2fc4299607c85c7569",
+  "original_file_modified": false,
+  "original_rows": 198450,
+  "missing_body_rows": 3,
+  "rows_with_missing_or_blank_bodies": 7,
+  "unusable_body_rows_excluded": 7,
+  "conflicting_body_groups": 0,
+  "duplicate_body_rows_removed": 3405,
+  "prepared_unique_rows": 195038,
+  "label_mapping": {
+    "0": "Safe",
+    "1": "Phishing"
+  },
+  "deduplication": "Exact body match; keep first occurrence",
+  "split_ratios_approximate": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15
+  },
+  "random_state": 42,
+  "stratified_by": "label",
+  "text_transformation": "None; raw body text preserved",
+  "python_pandas_version": "2.3.3",
+  "scikit_learn_version": "1.6.1",
+  "splits": {
+    "train": {
+      "rows": 136526,
+      "label_counts": {
+        "0": 67081,
+        "1": 69445
+      }
+    },
+    "validation": {
+      "rows": 29256,
+      "label_counts": {
+        "0": 14374,
+        "1": 14882
+      }
+    },
+    "test": {
+      "rows": 29256,
+      "label_counts": {
+        "0": 14375,
+        "1": 14881
+      }
+    }
+  }
+}
