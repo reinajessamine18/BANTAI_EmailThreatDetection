@@ -2,10 +2,13 @@ import { useRef, useState } from "react";
 
 import shieldIcon from "../assets/shield-scan.png";
 import uploadIcon from "../assets/upload-icon.png";
+import AnalysisResults from "./AnalysisResults";
 
 function AnalyzeEmail() {
   const [inputMethod, setInputMethod] = useState("upload");
   const [scanCompleted, setScanCompleted] = useState(false);
+  const [pasteContent, setPasteContent] = useState("");
+  const [scannedAt, setScannedAt] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -61,8 +64,31 @@ function AnalyzeEmail() {
   };
 
   const handleScan = () => {
+    if (inputMethod === "upload" && !selectedFile) {
+      alert("Select an .eml file before scanning.");
+      return;
+    }
+
+    if (inputMethod === "paste" && !pasteContent.trim()) {
+      alert("Paste email content before scanning.");
+      return;
+    }
+
+    setScannedAt(new Date().toISOString());
     setScanCompleted(true);
   };
+
+  if (scanCompleted) {
+    return (
+      <AnalysisResults
+        result={null}
+        fileName={inputMethod === "paste" ? "Pasted email" : selectedFile?.name}
+        scannedAt={scannedAt}
+        isGuest={false}
+        onBack={() => setScanCompleted(false)}
+      />
+    );
+  }
 
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 Bytes";
@@ -82,10 +108,6 @@ function AnalyzeEmail() {
           Analyze Email
         </h1>
 
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-          Upload an email file or paste its contents to scan for
-          potential security threats.
-        </p>
       </div>
 
       {/* EMAIL INPUT CARD */}
@@ -247,6 +269,8 @@ function AnalyzeEmail() {
             <textarea
               placeholder="Paste the complete email content here..."
               rows={12}
+              value={pasteContent}
+              onChange={(event) => setPasteContent(event.target.value)}
               onInput={(event) => {
                 event.target.style.height = "auto";
                 event.target.style.height = `${event.target.scrollHeight}px`;
@@ -276,31 +300,14 @@ function AnalyzeEmail() {
 
         </div>
 
-        {/* RESULT PLACEHOLDER */}
-        {scanCompleted && (
-          <div className="mt-8 rounded-xl border border-zinc-800 bg-black/50 p-6">
-
-            <h2 className="text-lg font-bold text-white">
-              Email Analysis Results
-            </h2>
-
-            <p className="mt-2 text-sm leading-6 text-zinc-500">
-              Your XGBoost threat analysis results will appear here
-              once the FastAPI backend is connected.
-            </p>
-
-          </div>
-        )}
-
       </div>
 
       {/* PRIVACY */}
       <div className="flex justify-center px-4 text-center">
 
         <p className="text-[11px] leading-5 text-zinc-600">
-          Privacy enforced: Email payloads are parsed securely via
-          FastAPI and are stored according to your account's
-          threat-history settings.
+          Email content is not sent or saved yet. Analysis and account
+          history will be available once the FastAPI backend is connected.
         </p>
 
       </div>

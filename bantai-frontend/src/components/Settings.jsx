@@ -144,9 +144,6 @@ function Settings() {
           System Settings
         </h1>
 
-        <p className="mt-2 text-sm leading-6 text-zinc-500">
-          Manage your BANTAI account and system configuration.
-        </p>
       </div>
 
       <div className="grid gap-10 lg:grid-cols-[220px_minmax(0,1fr)]">

@@ -1,3 +1,4 @@
+import { Download, Search } from "lucide-react";
 import { useState } from "react";
 
 function ThreatHistory() {
@@ -25,52 +26,60 @@ function ThreatHistory() {
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-black tracking-tight text-white">
-          Threat History
+          Threat History &amp; Audit Logs
         </h1>
 
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-          Review the audit log of emails analyzed by the BANTAI threat
-          detection engine.
-        </p>
       </div>
 
       {/* Search and Filters */}
       <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
           {/* Search */}
-          <div className="relative flex-1">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              size={17}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+            />
             <input
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search email address or subject..."
-              className="w-full rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400"
+              placeholder="Search by subject, sender, or scan ID..."
+              className="w-full rounded-lg border border-zinc-800 bg-black py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400"
             />
           </div>
 
           {/* Date Filter */}
           <select
-          value={dateFilter}
-          onChange={(event) => setDateFilter(event.target.value)}
-          className="rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-zinc-400 outline-none transition focus:border-lime-400"
+            value={dateFilter}
+            onChange={(event) => setDateFilter(event.target.value)}
+            className="rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-zinc-400 outline-none transition focus:border-lime-400"
           >
-          <option value="all">All Time</option>
-          <option value="7">Last 7 Days</option>
-          <option value="30">Last 30 Days</option>
-          <option value="year">This Year</option>
+            <option value="all">All Time</option>
+            <option value="7">Last 7 Days</option>
+            <option value="30">Last 30 Days</option>
+            <option value="year">This Year</option>
           </select>
 
           {/* Threat Level Filter */}
           <select
-          value={threatFilter}
-          onChange={(event) => setThreatFilter(event.target.value)}
-          className="rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-zinc-400 outline-none transition focus:border-lime-400"
+            value={threatFilter}
+            onChange={(event) => setThreatFilter(event.target.value)}
+            className="rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-zinc-400 outline-none transition focus:border-lime-400"
           >
-          <option value="all">All Threat Levels</option>
-          <option value="safe">Safe</option>
-          <option value="suspicious">Suspicious</option>
-          <option value="phishing">Phishing</option>
+            <option value="all">All Threat Levels</option>
+            <option value="safe">Safe</option>
+            <option value="suspicious">Suspicious</option>
+            <option value="phishing">Phishing</option>
           </select>
+
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-lime-400 px-4 py-3 text-xs font-bold uppercase tracking-wider text-lime-400 transition hover:bg-lime-400/10"
+          >
+            <Download size={15} />
+            Export CSV
+          </button>
         </div>
       </div>
 
