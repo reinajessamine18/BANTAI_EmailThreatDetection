@@ -17,8 +17,14 @@ NOTE on SHAP value space:
   explainer configuration.  This script reports whatever space the
   explainer provides and does not mis-label raw contributions as
   probability percentages.
+
+Usage:
+  python explain_one_email.py                 -> first Safe row (original behavior)
+  python explain_one_email.py --label 1       -> first Phishing row
+  python explain_one_email.py --row-index 35  -> exact 0-based row 35
 """
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -75,13 +81,21 @@ def load_artifacts():
 # ---------------------------------------------------------------------------
 # Helper: read exactly one validation email
 # ---------------------------------------------------------------------------
-def load_one_validation_email():
-    """Read the first validation row with label 0 (Safe).
+def load_one_validation_email(target_label=0, row_index=None):
+    """Read exactly one validation row and return (selected_index, df).
+
+    Selection rules (row_index takes precedence):
+    * row_index is not None -> read exactly that 0-based positional row.
+    * otherwise             -> first row whose label equals target_label.
+
+    The default (target_label=0, row_index=None) preserves the original
+    behavior of explaining the first Safe row.
 
     Returns
     -------
-    df : pandas.DataFrame
-        Exactly one row with columns ``body`` and ``label``.
+    (selected_index, df)
+        selected_index : 0-based positional row in validation.csv
+        df             : one-row DataFrame with columns ``body`` and ``label``
     """
     if not VAL_CSV.is_file():
         raise FileNotFoundError(
@@ -89,25 +103,55 @@ def load_one_validation_email():
             "Run prepare_dataset.py first."
         )
 
-    # Scan CSV in bounded chunks to find the first label-0 (Safe) row.
-    # Using chunksize limits memory use on the 8 GB RAM laptop;
-    # we stop as soon as we encounter the first matching row.
+    if row_index is not None and row_index < 0:
+        raise ValueError(f"row_index {row_index} is negative; expected 0 or greater.")
+
+    # Both selection modes scan the CSV in bounded chunks so that memory use
+    # stays low on the 8 GB RAM laptop; only one chunk is held at a time.
     chunk_size = 10_000
-    df = None
-    for chunk in pd.read_csv(VAL_CSV, chunksize=chunk_size, dtype={"body": str, "label": int}):
-        label0_mask = chunk["label"] == 0
-        if label0_mask.any():
-            matching_positions = np.flatnonzero(label0_mask.to_numpy())
 
-            if matching_positions.size:
-                df = chunk.iloc[[matching_positions[0]]]
+    if row_index is not None:
+        # Walk the file chunk by chunk until the requested row is reached.
+        offset = 0
+        df = None
+        selected_index = None
+        for chunk in pd.read_csv(
+            VAL_CSV, chunksize=chunk_size, dtype={"body": str, "label": int}
+        ):
+            if row_index < offset + len(chunk):
+                local = row_index - offset
+                selected_index = row_index
+                df = chunk.iloc[[local]]
                 break
+            offset += len(chunk)
 
-    if df is None:
-        raise ValueError(
-            f"No email with label=0 (Safe) found in validation CSV: {VAL_CSV}. "
-            "All rows have label=1 (Phishing)."
-        )
+        if df is None:
+            if offset == 0:
+                raise ValueError("The validation CSV is empty.")
+            raise ValueError(
+                f"row_index {row_index} is outside the validation CSV "
+                f"(the file has {offset:,} rows; valid range: 0 to {offset - 1})."
+            )
+    else:
+        # Stop at the first row whose label equals target_label.
+        offset = 0
+        df = None
+        selected_index = None
+        for chunk in pd.read_csv(
+            VAL_CSV, chunksize=chunk_size, dtype={"body": str, "label": int}
+        ):
+            mask = chunk["label"] == target_label
+            if mask.any():
+                local = int(np.flatnonzero(mask.to_numpy())[0])
+                selected_index = offset + local
+                df = chunk.iloc[[local]]
+                break
+            offset += len(chunk)
+
+        if df is None:
+            raise ValueError(
+                f"No email with label={target_label} found in validation CSV: {VAL_CSV}."
+            )
 
     # Validate expected columns cleanly.
     expected_cols = {"body", "label"}
@@ -123,7 +167,7 @@ def load_one_validation_email():
 
     # Guarantee exactly one row (head-1 safety), preserving DataFrame type.
     df = df.head(1).reset_index(drop=True)
-    return df
+    return selected_index, df
 
 
 # ---------------------------------------------------------------------------
@@ -224,9 +268,40 @@ def compute_shap_explanation(model, X):
 
 
 # ---------------------------------------------------------------------------
+# Command-line arguments
+# ---------------------------------------------------------------------------
+def parse_args(argv=None):
+    """Parse optional row-selection arguments.
+
+    Defaults preserve the original behavior: the first Safe (label 0) row.
+    """
+    parser = argparse.ArgumentParser(
+        description="Explain one validation email with SHAP (read-only)."
+    )
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--label",
+        type=int,
+        choices=(0, 1),
+        default=0,
+        help="explain the first validation row with this label "
+             "(0 = Safe [default], 1 = Phishing)",
+    )
+    selection.add_argument(
+        "--row-index",
+        type=int,
+        default=None,
+        help="explain this exact 0-based positional row of validation.csv",
+    )
+    return parser.parse_args(argv)
+
+
+# ---------------------------------------------------------------------------
 # Main explanation routine
 # ---------------------------------------------------------------------------
 def main():
+    args = parse_args()
+
     print("=" * 60)
     print("BANTAI - Explain one email's phishing classification")
     print("=" * 60)
@@ -241,7 +316,9 @@ def main():
 
     # --- Load one validation email ---
     try:
-        val_one = load_one_validation_email()
+        selected_index, val_one = load_one_validation_email(
+            target_label=args.label, row_index=args.row_index
+        )
     except (FileNotFoundError, ValueError) as e:
         print(f"ERROR loading validation email: {e}")
         sys.exit(1)
@@ -273,6 +350,7 @@ def main():
     # -----------------------------------------------------------------
     # Print results: SHAP token contributions (present-feature filter)
     # -----------------------------------------------------------------
+    print(f"Validation row index: {selected_index} (0-based positional in validation.csv)")
     print(f"True label    : {true_label}   (0 = Safe, 1 = Phishing)")
     print(f"Predicted     : {predicted_label}   (0 = Safe, 1 = Phishing)")
     print(f"Probabilities : P(Safe)={p_safe:.4f},  P(Phishing)={p_phishing:.4f}")

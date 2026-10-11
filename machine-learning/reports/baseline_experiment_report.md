@@ -142,7 +142,7 @@ Derived counts from the recorded matrix: false positives = 608, false negatives 
 5. **No runtime or hardware measurements.** Training time, inference time, and hardware details were not recorded (the 8 GB RAM constraint appears only in script comments). The project rules call for recording relevant hardware and execution settings.
 6. **Configuration-file provenance.** Filesystem timestamps for `experiment_config.json` show it was written later than the model and vectorizer files created during the training run. The cause is not recorded; the file's contents match the saved artifacts as verified on 2026-10-11.
 7. **Threat score and risk tiers undefined.** The 0-100 threat score and Low/Medium/Critical tier thresholds are not defined; interface expectations exist, but the mapping is an open decision for the deployment stage.
-8. **Explainability not included.** SHAP work is a separate activity; no SHAP outputs are part of this experiment record.
+8. **Explainability not included here.** SHAP work is a separate activity; no SHAP outputs are part of this experiment record. Prototype notes: `shap_prototype_notes.md`.
 9. **Presentation rule.** All metrics in this report are validation metrics. Do not present them as test metrics or as final model performance.
 
 ## 11. Evidence sources and related documents
