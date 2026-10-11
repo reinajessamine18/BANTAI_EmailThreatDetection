@@ -57,10 +57,10 @@ OUTPUT_SPACE_RAW = "raw model output (binary XGBoost margin/log-odds)"
 
 __all__ = [
     "ADDITIVITY_TOLERANCE",
-    "BaselinePredictor",
-    "InferenceError",
     "MAX_BODY_CHARS",
     "OUTPUT_SPACE_RAW",
+    "BaselinePredictor",
+    "InferenceError",
     "PredictionResult",
     "TokenContribution",
     "get_predictor",
@@ -133,7 +133,7 @@ def _extract_class1_shap(explainer, X):
     """
     try:
         shap_values = explainer.shap_values(X)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise InferenceError(
             f"SHAP computation failed: {type(exc).__name__}"
         ) from exc
@@ -234,7 +234,7 @@ class BaselinePredictor:
 
     # -- loading ------------------------------------------------------------
     @classmethod
-    def load(cls, artifacts_dir: Path | None = None) -> "BaselinePredictor":
+    def load(cls, artifacts_dir: Path | None = None) -> BaselinePredictor:
         """Load the saved artifacts read-only and build the SHAP explainer."""
         artifacts_dir = (
             Path(artifacts_dir) if artifacts_dir is not None else DEFAULT_ARTIFACTS_DIR
@@ -262,7 +262,7 @@ class BaselinePredictor:
 
         try:
             explainer = shap.TreeExplainer(model)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise InferenceError(
                 f"could not create SHAP TreeExplainer: {type(exc).__name__}"
             ) from exc
