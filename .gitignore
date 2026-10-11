@@ -9,3 +9,10 @@ machine-learning/data/processed/
 # Local Python virtual environment
 machine-learning/.venv/
 machine-learning/artifacts/baseline/
+
+# Local SHAP diagnostic email; may contain sensitive body text
+/misclassified_row.json
+
+# Python generated files
+__pycache__/
+*.py[cod]
