@@ -138,7 +138,7 @@ function GuestAnalyzeEmail() {
 
                 <Link
                   to="/login"
-                  className="mt-8 inline-flex w-full items-center justify-center rounded-lg bg-lime-400 px-7 py-3.5 text-sm font-bold tracking-wide text-black transition hover:bg-lime-300 hover:shadow-[0_0_25px_rgba(190,255,0,0.25)]"
+                  className="mt-8 inline-flex w-full items-center justify-center rounded-lg bg-lime-400 px-7 py-3.5 text-sm font-bold tracking-wide text-black transition hover:bg-lime-300 hover:shadow-[0_0_30px_rgba(190,255,0,0.35)]"
                 >
                   LOG IN TO CONTINUE
                 </Link>

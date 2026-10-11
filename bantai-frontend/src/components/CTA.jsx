@@ -28,14 +28,14 @@ export default function CTA() {
 
               <Link
                 to="/login"
-                className="rounded-full bg-lime-400 px-9 py-3.5 text-sm font-bold text-black transition-all hover:bg-lime-300 hover:shadow-[0_0_25px_rgba(190,255,0,0.3)]"
+                className="rounded-full bg-lime-400 px-9 py-3.5 text-sm font-bold text-black transition-all hover:bg-lime-300 hover:shadow-[0_0_30px_rgba(190,255,0,0.35)]"
               >
                 LOGIN
               </Link>
 
               <a
                 href="#resources"
-                className="rounded-full border border-lime-400 px-8 py-3.5 text-sm font-bold text-lime-400 transition-all hover:bg-lime-400 hover:text-black"
+                className="rounded-full border border-lime-400 px-8 py-3.5 text-sm font-bold text-lime-400 transition-all hover:bg-lime-400 hover:text-black hover:shadow-[0_0_30px_rgba(190,255,0,0.35)]"
               >
                 View User Manual
               </a>

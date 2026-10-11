@@ -8,21 +8,18 @@ const advantages = [
     title: "Rapid Threat Inference",
     description:
       "Utilizing an Extreme Gradient Boosting (XGBoost) architecture, BANTAI evaluates high-dimensional email metadata and URL properties in under 100 milliseconds.",
-    link: "View architecture",
   },
   {
     icon: transparentAIIcon,
     title: "Transparent AI Decisions",
     description:
       'Eliminate the "black box." Our integrated SHAP Explainability Framework breaks down every prediction, showing you exactly which features triggered a phishing alert.',
-    link: "Explore XAI",
   },
   {
     icon: userEducationIcon,
     title: "User-Centric Education",
     description:
       "Transform passive users into active defenders. BANTAI translates complex mathematical Shapley values into plain-language insights to build security awareness.",
-    link: "Learn more",
   },
 ];
 
@@ -70,17 +67,9 @@ export default function Advantage() {
               </h3>
 
               {/* Description */}
-              <p className="mb-8 text-sm leading-6 text-zinc-500">
+              <p className="text-sm leading-6 text-zinc-500">
                 {advantage.description}
               </p>
-
-              {/* Link */}
-              <a
-                href="#resources"
-                className="text-xs font-bold text-lime-400 transition-colors hover:text-lime-300"
-              >
-                {advantage.link} →
-              </a>
 
             </article>
           ))}

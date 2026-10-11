@@ -40,14 +40,14 @@ function Navbar() {
           <div className="flex items-center gap-3">
             <Link
               to="/login"
-              className="rounded-lg border border-lime-400 px-4 py-2 text-sm font-semibold text-lime-400 transition duration-200 hover:bg-lime-400 hover:text-black"
+              className="rounded-lg border border-lime-400 px-4 py-2 text-sm font-semibold text-lime-400 transition duration-200 hover:bg-lime-400 hover:text-black hover:shadow-[0_0_25px_rgba(190,255,0,0.3)]"
             >
               Log In
             </Link>
 
             <Link
               to="/signup"
-              className="rounded-lg border border-lime-400 bg-lime-400 px-4 py-2 text-sm font-bold text-black transition duration-200 hover:bg-transparent hover:text-lime-400 focus:bg-transparent focus:text-lime-400 focus:outline-none"
+              className="rounded-lg border border-lime-400 bg-lime-400 px-4 py-2 text-sm font-bold text-black transition duration-200 hover:bg-transparent hover:text-lime-400 hover:shadow-[0_0_25px_rgba(190,255,0,0.3)] focus:bg-transparent focus:text-lime-400 focus:outline-none"
             >
               Sign Up
             </Link>

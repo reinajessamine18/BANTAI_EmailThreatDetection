@@ -1,6 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import eyeIcon from "../assets/eye-icon.png";
 
+const PREFERENCES_KEY = "bantaiSystemPreferences";
+const DEFAULT_PREFERENCES = {
+  enableShapAdvancedMode: true,
+  autoSaveScanLogs: false,
+};
+
+function loadPreferences() {
+  try {
+    const savedPreferences = JSON.parse(
+      localStorage.getItem(PREFERENCES_KEY) || "{}"
+    );
+    const normalizedPreferences = {
+      enableShapAdvancedMode:
+        savedPreferences.enableShapAdvancedMode ??
+        savedPreferences.showShapExplainability,
+      autoSaveScanLogs:
+        savedPreferences.autoSaveScanLogs ?? savedPreferences.saveThreatHistory,
+    };
+
+    return {
+      ...DEFAULT_PREFERENCES,
+      ...Object.fromEntries(
+        Object.keys(DEFAULT_PREFERENCES)
+          .filter((key) => typeof normalizedPreferences[key] === "boolean")
+          .map((key) => [key, normalizedPreferences[key]])
+      ),
+    };
+  } catch {
+    return DEFAULT_PREFERENCES;
+  }
+}
+
 function Settings() {
   const [activeSection, setActiveSection] = useState("profile");
   const [user, setUser] = useState(null);
@@ -18,6 +50,8 @@ function Settings() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [preferences, setPreferences] = useState(loadPreferences);
+  const [preferencesError, setPreferencesError] = useState("");
 
   const fileInputRef = useRef(null);
 
@@ -128,6 +162,26 @@ function Settings() {
     setTimeout(() => {
       setPasswordMessage("");
     }, 3000);
+  };
+
+  const togglePreference = (key) => {
+    const updatedPreferences = {
+      ...preferences,
+      [key]: !preferences[key],
+    };
+
+    try {
+      localStorage.setItem(
+        PREFERENCES_KEY,
+        JSON.stringify(updatedPreferences)
+      );
+      setPreferences(updatedPreferences);
+      setPreferencesError("");
+    } catch {
+      setPreferencesError(
+        "Could not save this preference in this browser. Please check browser storage settings."
+      );
+    }
   };
 
   const settingsNavigation = [
@@ -290,63 +344,78 @@ function Settings() {
             <div>
               <div className="border-b border-zinc-800 pb-6">
                 <h2 className="text-xl font-bold text-white">
-                  System Preferences
+                  Display Preferences
                 </h2>
 
                 <p className="mt-2 text-sm text-zinc-500">
-                  Configure how BANTAI behaves.
+                  Customize how analysis results and scan logs should be
+                  handled when those features are available.
                 </p>
               </div>
 
               <div className="divide-y divide-zinc-800">
-                <div className="flex items-center justify-between gap-6 py-6">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">
-                      Threat History
-                    </h3>
+                {[
+                  {
+                    key: "enableShapAdvancedMode",
+                    title: "Enable SHAP Advanced Mode",
+                    description:
+                      "Show detailed explainability visualizations in threat analysis.",
+                  },
+                  {
+                    key: "autoSaveScanLogs",
+                    title: "Auto-save Scan Logs",
+                    description:
+                      "Automatically save scan results to your account's history when scan storage is available.",
+                  },
+                ].map(({ key, title, description }) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-6 py-6"
+                  >
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">
+                        {title}
+                      </h3>
+                      <p className="mt-1 max-w-xl text-sm leading-6 text-zinc-600">
+                        {description}
+                      </p>
+                    </div>
 
-                    <p className="mt-1 text-sm text-zinc-600">
-                      Keep completed email analyses in your audit history.
-                    </p>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={preferences[key]}
+                      aria-label={title}
+                      onClick={() => togglePreference(key)}
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-400 focus:ring-offset-2 focus:ring-offset-zinc-950 ${
+                        preferences[key] ? "bg-lime-400" : "bg-zinc-800"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 h-4 w-4 rounded-full transition-all ${
+                          preferences[key]
+                            ? "right-1 bg-black"
+                            : "left-1 bg-zinc-500"
+                        }`}
+                      />
+                    </button>
                   </div>
-
-                  <div className="relative h-6 w-11 shrink-0 rounded-full bg-lime-400">
-                    <div className="absolute right-1 top-1 h-4 w-4 rounded-full bg-black" />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-6 py-6">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">
-                      SHAP Explainability
-                    </h3>
-
-                    <p className="mt-1 text-sm text-zinc-600">
-                      Display the features that influenced the prediction.
-                    </p>
-                  </div>
-
-                  <div className="relative h-6 w-11 shrink-0 rounded-full bg-lime-400">
-                    <div className="absolute right-1 top-1 h-4 w-4 rounded-full bg-black" />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-6 py-6">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">
-                      Automatic Analysis
-                    </h3>
-
-                    <p className="mt-1 text-sm text-zinc-600">
-                      Automatically analyze supported email files after upload.
-                    </p>
-                  </div>
-
-                  <div className="relative h-6 w-11 shrink-0 rounded-full bg-zinc-800">
-                    <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-zinc-500" />
-                  </div>
-                </div>
+                ))}
               </div>
+              {preferencesError && (
+                <p
+                  role="alert"
+                  className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400"
+                >
+                  {preferencesError}
+                </p>
+              )}
+              <p className="mt-5 text-xs leading-5 text-zinc-600">
+                These preferences are saved in this browser only. SHAP
+                explainability and scan-history storage are not connected yet,
+                so changing these options will not enable those features until
+                their services are implemented.
+              </p>
             </div>
           )}
 

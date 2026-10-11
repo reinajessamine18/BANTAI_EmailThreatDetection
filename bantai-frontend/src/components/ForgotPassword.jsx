@@ -213,7 +213,7 @@ function ForgotPassword() {
                   {/* Reset */}
                   <button
                     type="submit"
-                    className="w-full rounded-lg bg-lime-400 px-6 py-3.5 text-sm font-bold uppercase tracking-wider text-black transition hover:bg-lime-300 active:scale-[0.99]"
+                    className="w-full rounded-lg bg-lime-400 px-6 py-3.5 text-sm font-bold uppercase tracking-wider text-black transition hover:bg-lime-300 hover:shadow-[0_0_30px_rgba(190,255,0,0.35)] active:scale-[0.99]"
                   >
                     RESET PASSWORD
                   </button>
@@ -257,7 +257,7 @@ function ForgotPassword() {
                 <button
                   type="button"
                   onClick={handleBackToLogin}
-                  className="mt-8 w-full rounded-lg bg-lime-400 px-6 py-3.5 text-sm font-bold uppercase tracking-wider text-black transition hover:bg-lime-300 active:scale-[0.99]"
+                  className="mt-8 w-full rounded-lg bg-lime-400 px-6 py-3.5 text-sm font-bold uppercase tracking-wider text-black transition hover:bg-lime-300 hover:shadow-[0_0_30px_rgba(190,255,0,0.35)] active:scale-[0.99]"
                 >
                   BACK TO LOG IN
                 </button>
