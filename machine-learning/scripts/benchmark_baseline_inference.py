@@ -90,7 +90,7 @@ def cpu_name():
             winreg.CloseKey(key)
             if value:
                 return value.strip()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
             pass
     return platform.processor() or "unknown"
 
@@ -242,7 +242,7 @@ def measure_repeated_loads(module):
     print("## Repeated predictor loads (same process; NOT true cold starts)")
     print()
     print(
-        f"Each iteration clears the cached predictor via "
+        "Each iteration clears the cached predictor via "
         "`get_predictor.cache_clear()` and reloads the vectorizer, model, and "
         "SHAP explainer."
     )
@@ -317,11 +317,11 @@ def measure_step_breakdown(module):
                 fn()
             return (time.perf_counter() - start) / BREAKDOWN_REPETITIONS * 1000
 
-        t_transform = timed(lambda: predictor.vectorizer.transform([body]))
-        t_predict = timed(lambda: predictor.model.predict(X))
-        t_proba = timed(lambda: predictor.model.predict_proba(X))
-        t_margin = timed(lambda: predictor.model.predict(X, output_margin=True))
-        t_shap = timed(lambda: predictor.explainer.shap_values(X))
+        t_transform = timed(lambda: predictor.vectorizer.transform([body]))  # noqa: B023
+        t_predict = timed(lambda: predictor.model.predict(X))  # noqa: B023
+        t_proba = timed(lambda: predictor.model.predict_proba(X))  # noqa: B023
+        t_margin = timed(lambda: predictor.model.predict(X, output_margin=True))  # noqa: B023
+        t_shap = timed(lambda: predictor.explainer.shap_values(X))  # noqa: B023
 
         print(
             f"| {label} | {fmt_ms(t_transform)} | {fmt_ms(t_predict)} | "
@@ -368,7 +368,7 @@ def main():
 
     print_metadata()
 
-    module, import_seconds = measure_import()
+    module, import_seconds = measure_import()  # noqa: RUF059
     if module is None:
         print("ERROR: module import failed; aborting benchmark.")
         return 1
