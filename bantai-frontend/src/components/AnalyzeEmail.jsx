@@ -1,10 +1,12 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 
 import shieldIcon from "../assets/shield-scan.png";
 import uploadIcon from "../assets/upload-icon.png";
 import AnalysisResults from "./AnalysisResults";
 
 function AnalyzeEmail() {
+  const { setHasUnsavedChanges } = useOutletContext();
   const [inputMethod, setInputMethod] = useState("upload");
   const [scanCompleted, setScanCompleted] = useState(false);
   const [pasteContent, setPasteContent] = useState("");
@@ -13,6 +15,13 @@ function AnalyzeEmail() {
   const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const hasUnsavedInput = Boolean(selectedFile || pasteContent);
+    setHasUnsavedChanges(hasUnsavedInput);
+
+    return () => setHasUnsavedChanges(false);
+  }, [pasteContent, selectedFile, setHasUnsavedChanges]);
 
   const handleFile = (file) => {
     if (!file) return;

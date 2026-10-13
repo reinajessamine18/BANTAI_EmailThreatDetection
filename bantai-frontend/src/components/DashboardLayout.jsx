@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   House,
@@ -10,6 +10,9 @@ import {
 function DashboardLayout() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
+  const logoutDialogRef = useRef(null);
 
   const loadUser = () => {
     const storedUser = localStorage.getItem("bantaiUser");
@@ -36,7 +39,23 @@ function DashboardLayout() {
   }, []);
 
   const handleLogout = () => {
+    setIsLogoutDialogOpen(true);
+  };
+
+  useEffect(() => {
+    if (isLogoutDialogOpen) {
+      logoutDialogRef.current?.showModal();
+    }
+  }, [isLogoutDialogOpen]);
+
+  const cancelLogout = () => {
+    logoutDialogRef.current?.close();
+    setIsLogoutDialogOpen(false);
+  };
+
+  const confirmLogout = () => {
     localStorage.removeItem("bantaiAuthenticated");
+    cancelLogout();
     navigate("/");
   };
 
@@ -158,9 +177,54 @@ function DashboardLayout() {
       {/* Main */}
       <main className="ml-64 min-h-screen bg-black">
         <div className="px-8 py-8">
-          <Outlet />
+          <Outlet context={{ setHasUnsavedChanges }} />
         </div>
       </main>
+
+      {isLogoutDialogOpen && (
+        <dialog
+          ref={logoutDialogRef}
+          onClose={() => setIsLogoutDialogOpen(false)}
+          aria-labelledby="logout-dialog-title"
+          aria-describedby="logout-dialog-description"
+          className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-0 text-white shadow-[0_0_60px_rgba(0,0,0,0.6)] backdrop:bg-black/80 backdrop:backdrop-blur-sm"
+        >
+          <div className="border-b border-zinc-800 px-6 py-5">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-lime-400">
+              BANTAI Account
+            </p>
+            <h2 id="logout-dialog-title" className="text-xl font-bold">
+              {hasUnsavedChanges ? "Unsaved changes" : "Log out?"}
+            </h2>
+          </div>
+
+          <div className="px-6 py-5">
+            <p id="logout-dialog-description" className="text-sm leading-6 text-zinc-400">
+              {hasUnsavedChanges
+                ? "You have unsaved changes. If you log out now, they will not be saved and will be lost. Are you sure you want to continue?"
+                : "Are you sure you want to log out of your account?"}
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                autoFocus
+                onClick={cancelLogout}
+                className="rounded-lg border border-zinc-700 px-4 py-2.5 text-sm font-semibold text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-900 hover:text-white focus:outline-none focus:ring-2 focus:ring-lime-400"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmLogout}
+                className="rounded-lg border border-lime-400 bg-lime-400 px-4 py-2.5 text-sm font-bold text-black transition hover:bg-transparent hover:text-lime-400 focus:outline-none focus:ring-2 focus:ring-lime-400 focus:ring-offset-2 focus:ring-offset-zinc-950"
+              >
+                {hasUnsavedChanges ? "Discard & Log Out" : "Log Out"}
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
     </div>
   );
 }

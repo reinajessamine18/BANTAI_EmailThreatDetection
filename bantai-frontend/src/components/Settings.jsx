@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 import eyeIcon from "../assets/eye-icon.png";
 
 const PREFERENCES_KEY = "bantaiSystemPreferences";
@@ -34,11 +35,17 @@ function loadPreferences() {
 }
 
 function Settings() {
+  const { setHasUnsavedChanges } = useOutletContext();
   const [activeSection, setActiveSection] = useState("profile");
   const [user, setUser] = useState(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [profilePicture, setProfilePicture] = useState("");
+  const [savedProfile, setSavedProfile] = useState({
+    name: "",
+    email: "",
+    profilePicture: "",
+  });
   const [saved, setSaved] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -66,11 +73,28 @@ function Settings() {
         setName(parsedUser.name || "");
         setEmail(parsedUser.email || "");
         setProfilePicture(parsedUser.profilePicture || "");
+        setSavedProfile({
+          name: parsedUser.name || "",
+          email: parsedUser.email || "",
+          profilePicture: parsedUser.profilePicture || "",
+        });
       } catch {
         setUser(null);
       }
     }
   }, []);
+
+  const hasUnsavedChanges =
+    name !== savedProfile.name ||
+    email !== savedProfile.email ||
+    profilePicture !== savedProfile.profilePicture ||
+    Boolean(currentPassword || newPassword || confirmPassword);
+
+  useEffect(() => {
+    setHasUnsavedChanges(hasUnsavedChanges);
+
+    return () => setHasUnsavedChanges(false);
+  }, [hasUnsavedChanges, setHasUnsavedChanges]);
 
   const handleProfilePicture = (event) => {
     const file = event.target.files?.[0];
@@ -98,6 +122,13 @@ function Settings() {
     localStorage.setItem("bantaiUser", JSON.stringify(updatedUser));
 
     setUser(updatedUser);
+    setName(updatedUser.name);
+    setEmail(updatedUser.email);
+    setSavedProfile({
+      name: updatedUser.name,
+      email: updatedUser.email,
+      profilePicture: updatedUser.profilePicture,
+    });
 
     window.dispatchEvent(new Event("bantaiUserUpdated"));
 
