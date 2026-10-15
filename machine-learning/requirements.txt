@@ -1,0 +1,11 @@
+# BANTAI Machine Learning Dependencies
+
+# Versions verified in the project's ML environment
+
+numpy==1.26.4
+pandas==2.3.3
+scipy==1.13.1
+scikit-learn==1.6.1
+xgboost==2.1.4
+shap==0.48.0
+joblib==1.5.3

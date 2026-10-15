@@ -1,0 +1,16 @@
+# BANTAI backend runtime dependencies.
+#
+# Web/API/DB/parsing packages use LOWER BOUNDS, not verified pins (they could not
+# be installed or tested while this step was written). After your first
+# successful install, run `pip freeze` and record the exact versions
+# (AGENTS.md section 8, Reproducibility).
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+pydantic-settings>=2.2
+sqlalchemy>=2.0
+beautifulsoup4>=4.12
+
+# ML pins are the ones verified by the ML team. Reused, not duplicated, so the
+# backend can never drift from the versions the .pkl artifacts were built with.
+-r ../machine-learning/requirements.txt
