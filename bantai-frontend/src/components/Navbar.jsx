@@ -1,6 +1,20 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { getToken, SESSION_EXPIRED_EVENT } from "../api/client";
 
 function Navbar() {
+  const [isSignedIn, setIsSignedIn] = useState(() => Boolean(getToken()));
+
+  useEffect(() => {
+    const syncSession = () => setIsSignedIn(Boolean(getToken()));
+    window.addEventListener("storage", syncSession);
+    window.addEventListener(SESSION_EXPIRED_EVENT, syncSession);
+    return () => {
+      window.removeEventListener("storage", syncSession);
+      window.removeEventListener(SESSION_EXPIRED_EVENT, syncSession);
+    };
+  }, []);
+
   return (
     <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
@@ -42,19 +56,30 @@ function Navbar() {
 
           {/* Authentication */}
           <div className="flex items-center gap-3">
-            <Link
-              to="/login"
-              className="rounded-lg border border-lime-400 px-4 py-2 text-sm font-semibold text-lime-400 transition duration-200 hover:bg-lime-400 hover:text-black hover:shadow-[0_0_25px_rgba(190,255,0,0.3)]"
-            >
-              Log In
-            </Link>
+            {isSignedIn ? (
+              <Link
+                to="/app/dashboard"
+                className="rounded-lg border border-lime-400 bg-lime-400 px-4 py-2 text-sm font-bold text-black transition duration-200 hover:bg-transparent hover:text-lime-400 hover:shadow-[0_0_25px_rgba(190,255,0,0.3)] focus:bg-transparent focus:text-lime-400 focus:outline-none"
+              >
+                Open Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="rounded-lg border border-lime-400 px-4 py-2 text-sm font-semibold text-lime-400 transition duration-200 hover:bg-lime-400 hover:text-black hover:shadow-[0_0_25px_rgba(190,255,0,0.3)]"
+                >
+                  Log In
+                </Link>
 
-            <Link
-              to="/signup"
-              className="rounded-lg border border-lime-400 bg-lime-400 px-4 py-2 text-sm font-bold text-black transition duration-200 hover:bg-transparent hover:text-lime-400 hover:shadow-[0_0_25px_rgba(190,255,0,0.3)] focus:bg-transparent focus:text-lime-400 focus:outline-none"
-            >
-              Sign Up
-            </Link>
+                <Link
+                  to="/signup"
+                  className="rounded-lg border border-lime-400 bg-lime-400 px-4 py-2 text-sm font-bold text-black transition duration-200 hover:bg-transparent hover:text-lime-400 hover:shadow-[0_0_25px_rgba(190,255,0,0.3)] focus:bg-transparent focus:text-lime-400 focus:outline-none"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </div>

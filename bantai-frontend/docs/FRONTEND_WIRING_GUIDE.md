@@ -33,7 +33,7 @@ try {
 ```
 
 - Never start a POST (a scan) from `useEffect`: React StrictMode runs effects twice in development.
-- The token lives in `sessionStorage` (`bantaiToken`) and is sent only by the client. Never read or write it elsewhere.
+- The token lives in `localStorage` (`bantaiToken`) and is sent only by the client. Never read or write it elsewhere. Because browser scripts can access it, an XSS vulnerability could expose the token.
 - The **guest** page must call `scanEmail({ ..., signedIn: false })` so a stored token is never attached.
 
 ## 3. File by file
@@ -559,7 +559,7 @@ Replace the paragraph starting "These preferences are saved in this browser only
 
 ## 8. Decisions and known gaps
 
-1. **Token storage.** Default is `sessionStorage` (signed out when the tab closes). For "stay signed in", change `tokenStore` in `client.js` to `localStorage`; the cost is that any XSS bug could then read a long-lived token.
+1. **Token storage.** Tokens are stored in `localStorage` so users stay signed in across tabs and browser restarts. To migrate a token left in `sessionStorage` by an earlier version, reload the tab that currently has that token; that tab copies it to `localStorage`. Any XSS bug could read the token; avoid unsafe HTML/script injection and keep token lifetimes appropriately limited.
 2. **Auto-save default disagrees.** The Settings screen defaults it **off**; the database and the backend default it **on**. After wiring, the server value wins. Decide the product default, then change `UserSettings` creation in `auth.py` register and the `user_settings` column default.
 3. **The guest "3 free scans" limit is cosmetic.** It lives in `sessionStorage`, so clearing storage resets it, and the backend has no limit. A real limit needs per-IP rate limiting on the server (not built).
 4. **History search by scan ID is not supported.** The search box placeholder mentions "scan ID", but the API searches only subject and sender. Change the placeholder, or ask for the backend change.

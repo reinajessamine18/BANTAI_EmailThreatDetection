@@ -9,9 +9,8 @@
 //  * On a 401 for a signed-in call the token is cleared and "bantai:session-expired" is fired.
 
 const BASE_URL = String(import.meta.env?.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1").replace(/\/+$/, "");
-// sessionStorage = signed out when the tab closes (safer, fits the 8-hour sessions).
-// Switch to localStorage here if you want "stay signed in" across tabs and restarts.
-const tokenStore = () => globalThis.sessionStorage;
+// localStorage keeps the signed-in session across tabs and browser restarts.
+const tokenStore = () => globalThis.localStorage;
 const TOKEN_KEY = "bantaiToken";
 export const SESSION_EXPIRED_EVENT = "bantai:session-expired";
 
@@ -19,13 +18,25 @@ export const MAX_EML_BYTES = 5 * 1024 * 1024; // backend limit for one email
 
 // ------------------------------------------------------------------ token
 export function getToken() {
-  try { return tokenStore()?.getItem(TOKEN_KEY) || null; } catch { return null; }
+  try {
+    const token = tokenStore()?.getItem(TOKEN_KEY);
+    if (token) return token;
+
+    const legacyToken = globalThis.sessionStorage?.getItem(TOKEN_KEY);
+    if (!legacyToken) return null;
+    tokenStore()?.setItem(TOKEN_KEY, legacyToken);
+    globalThis.sessionStorage?.removeItem(TOKEN_KEY);
+    return legacyToken;
+  } catch { return null; }
 }
 export function setToken(token) {
   try { tokenStore()?.setItem(TOKEN_KEY, token); } catch { /* storage blocked: stay signed-out */ }
 }
 export function clearToken() {
-  try { tokenStore()?.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+  try {
+    tokenStore()?.removeItem(TOKEN_KEY);
+    globalThis.sessionStorage?.removeItem(TOKEN_KEY);
+  } catch { /* ignore */ }
 }
 
 // Old prototype keys. 'bantaiUser' contains a PLAINTEXT password, so wipe it. Call once at startup.

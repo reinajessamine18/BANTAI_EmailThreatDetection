@@ -28,7 +28,7 @@ globalThis.fetch = async (url, init = {}) => {
 };
 
 const api = await import("./client.js");
-const reset = () => { calls = []; events.length = 0; globalThis.sessionStorage.removeItem("bantaiToken"); reply = () => ({ status: 200, body: {} }); };
+const reset = () => { calls = []; events.length = 0; globalThis.localStorage.removeItem("bantaiToken"); globalThis.sessionStorage.removeItem("bantaiToken"); reply = () => ({ status: 200, body: {} }); };
 const lastHeaders = () => calls.at(-1).headers;
 
 // ---- token + header rules ---------------------------------------------------------------------
@@ -40,6 +40,8 @@ test("no token means no Authorization header (never 'Bearer null')", async () =>
 
 test("a stored token is sent as a Bearer header", async () => {
   reset(); api.setToken("tok123");
+  assert.equal(globalThis.localStorage.getItem("bantaiToken"), "tok123");
+  assert.equal(globalThis.sessionStorage.getItem("bantaiToken"), null);
   await api.getDashboard("7");
   assert.equal(lastHeaders().Authorization, "Bearer tok123");
 });
@@ -69,7 +71,7 @@ test("login stores the token; the password is never written to browser storage",
   await api.login({ email: "a@x.example", password: "SuperSecret-12345" });
   assert.equal(api.getToken(), "t9");
   assert.equal(globalThis.localStorage.has("bantaiUser"), false);
-  const everything = JSON.stringify([...["bantaiToken"].map((k) => globalThis.sessionStorage.getItem(k))]);
+  const everything = JSON.stringify([...["bantaiToken"].map((k) => globalThis.localStorage.getItem(k))]);
   assert.ok(!everything.includes("SuperSecret"));
 });
 
@@ -236,4 +238,12 @@ test("health is a guest call", async () => {
   await api.getHealth();
   assert.equal(lastHeaders().Authorization, undefined);
   assert.ok(calls[0].url.endsWith("/health"));
+});
+
+test("a token from the previous sessionStorage behavior is migrated", () => {
+  reset();
+  globalThis.sessionStorage.setItem("bantaiToken", "legacy-token");
+  assert.equal(api.getToken(), "legacy-token");
+  assert.equal(globalThis.localStorage.getItem("bantaiToken"), "legacy-token");
+  assert.equal(globalThis.sessionStorage.getItem("bantaiToken"), null);
 });
