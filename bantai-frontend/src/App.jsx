@@ -16,6 +16,7 @@ import BackToTop from "./components/BackToTop";
 import Login from "./components/Login";
 import SignUp from "./components/SignUp";
 import ForgotPassword from "./components/ForgotPassword";
+import ResetPassword from "./components/ResetPassword";
 import GuestAnalyzeEmail from "./components/GuestAnalyzeEmail";
 
 import DashboardLayout from "./components/DashboardLayout";
@@ -59,6 +60,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* Guest Email Scanner */}
         <Route path="/analyze" element={<GuestAnalyzeEmail />} />

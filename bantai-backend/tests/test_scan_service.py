@@ -4,12 +4,14 @@ Needs SQLAlchemy (skipped automatically if absent).
 """
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 pytest.importorskip("sqlalchemy")
 
+from sqlalchemy import text  # noqa: E402
 from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
@@ -17,6 +19,10 @@ from app.db.init_db import init_db  # noqa: E402
 from app.db.models import User, UserSettings  # noqa: E402
 from app.db.session import build_engine  # noqa: E402
 from app.services import scan_store  # noqa: E402
+from app.services.guest_scan_quota import (  # noqa: E402
+    GuestScanLimitReached,
+    reserve_guest_scan,
+)
 from app.services.ml_service import MlUnavailable  # noqa: E402
 from app.services.scan_service import (  # noqa: E402
     ClientInfo,
@@ -111,6 +117,8 @@ def test_children_rows_are_written(env):
 def test_signed_in_user_keeps_subject_and_sender(env):
     session, path = env
     uid = make_user(session)
+    session.add(UserSettings(user_id=uid, auto_save_scan_logs=True))
+    session.commit()
     run(session, user_id=uid)
     [(user_id, subject, sender)] = q(path, "SELECT user_id, subject, sender_address FROM scans")
     assert user_id == uid and subject == "URGENT verify your account"
@@ -189,3 +197,31 @@ def test_storage_failure_fails_closed(env, monkeypatch):
     assert (err.value.status, err.value.code) == (500, "storage_failed")
     assert q(path, "SELECT COUNT(*) FROM scans")[0][0] == 0
     assert q(path, "SELECT COUNT(*) FROM audit_logs WHERE event_type = 'SCAN_COMPLETED'")[0][0] == 0
+
+
+def test_guest_scan_quota_expires_after_rolling_window(env):
+    session, _ = env
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for _ in range(3):
+        reserve_guest_scan(session, "192.0.2.10", now=now)
+    session.execute(
+        text("UPDATE guest_scan_reservations SET completed_at = :completed_at"),
+        {"completed_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")},
+    )
+    session.commit()
+
+    with pytest.raises(GuestScanLimitReached):
+        reserve_guest_scan(session, "192.0.2.10", now=now + timedelta(hours=23, minutes=59))
+
+    reserve_guest_scan(session, "192.0.2.10", now=now + timedelta(hours=24, seconds=1))
+
+
+def test_guest_scan_quota_is_separate_per_client_ip(env):
+    session, _ = env
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for _ in range(3):
+        reserve_guest_scan(session, "192.0.2.10", now=now)
+
+    reserve_guest_scan(session, "192.0.2.11", now=now)
+    with pytest.raises(GuestScanLimitReached):
+        reserve_guest_scan(session, "192.0.2.10", now=now)

@@ -42,6 +42,11 @@ def test_register_login_use_logout_flow(monkeypatch):
         assert reg.json()["user"]["email"] == "a@example.com" and "password" not in reg.text
 
         assert client.get(f"{API}/auth/me", headers=bearer(token)).json()["user"]["fullName"] == "Ana Test"
+        client.patch(
+            f"{API}/account/settings",
+            headers=bearer(token),
+            json={"autoSaveScanLogs": True},
+        )
         scan = client.post(f"{API}/scans", headers=bearer(token),
                            json={"inputMethod": "raw_text", "content": CONTENT})
         assert scan.status_code == 200 and scan.json()["saved"] is True
@@ -66,7 +71,7 @@ def test_registration_stores_a_hash_and_creates_the_settings_row(monkeypatch):
         register(client)
     [(stored,)] = db_rows("SELECT password_hash FROM users")
     assert stored.startswith("pbkdf2_sha256$") and PASSWORD not in stored
-    assert db_rows("SELECT auto_save_scan_logs FROM user_settings") == [(1,)]
+    assert db_rows("SELECT auto_save_scan_logs FROM user_settings") == [(0,)]
 
 
 def test_bad_credentials_get_one_generic_answer(monkeypatch):

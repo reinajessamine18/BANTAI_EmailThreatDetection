@@ -9,7 +9,6 @@
 //  * On a 401 for a signed-in call the token is cleared and "bantai:session-expired" is fired.
 
 const BASE_URL = String(import.meta.env?.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1").replace(/\/+$/, "");
-
 // sessionStorage = signed out when the tab closes (safer, fits the 8-hour sessions).
 // Switch to localStorage here if you want "stay signed in" across tabs and restarts.
 const tokenStore = () => globalThis.sessionStorage;
@@ -70,7 +69,12 @@ const FRIENDLY = {
   invalid_base64: "The file could not be read. Please try another .eml file.",
   ml_unavailable: "The analysis service is unavailable right now. Please try again shortly.",
   storage_failed: "The scan could not be recorded, so no result was shown. Please try again.",
+  guest_scan_limit_reached: "The free guest scan limit has been reached for this IP address. Log in to continue scanning.",
+  guest_quota_unavailable: "Guest scanning is temporarily unavailable. Please try again shortly.",
   configuration_error: "The server is misconfigured. Please contact an administrator.",
+  password_reset_unavailable: "Password recovery is not configured. Please contact an administrator.",
+  password_reset_rate_limited: "Too many password reset requests. Try again later.",
+  invalid_reset_token: "This password reset link is invalid or has expired. Request a new link.",
 };
 export function friendlyError(error) {
   if (error instanceof ApiError) return FRIENDLY[error.code] || error.message;
@@ -132,6 +136,20 @@ export async function login({ email, password }) {
   setToken(data.accessToken);
   return data.user;
 }
+
+export const requestPasswordReset = (email) =>
+  json("/auth/password-reset/request", {
+    method: "POST",
+    auth: false,
+    body: { email },
+  });
+
+export const resetPassword = ({ token, newPassword }) =>
+  json("/auth/password-reset/confirm", {
+    method: "POST",
+    auth: false,
+    body: { token, new_password: newPassword },
+  });
 
 export async function logout() {
   try { await json("/auth/logout", { method: "POST" }); } catch { /* sign out locally regardless */ }

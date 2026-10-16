@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 
 import backgroundImage from "../assets/bgimg-login.png";
 import lockIcon from "../assets/lock-icon.png";
@@ -10,6 +11,7 @@ function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -136,21 +138,36 @@ function SignUp() {
                   Password
                 </label>
 
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={password}
-                  onChange={(event) => {
-                    setPassword(event.target.value);
-                    setError("");
-                  }}
-                  placeholder="Create a password"
-                  autoComplete="new-password"
-                  required
-                  disabled={busy}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPasswords ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      setError("");
+                    }}
+                    placeholder="Create a password"
+                    autoComplete="new-password"
+                    required
+                    disabled={busy}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-4 py-3.5 pr-12 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswords((shown) => !shown)}
+                    aria-label={showPasswords ? "Hide passwords" : "Show passwords"}
+                    disabled={busy}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-zinc-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+                  >
+                    {showPasswords ? (
+                      <EyeOff aria-hidden="true" size={20} />
+                    ) : (
+                      <Eye aria-hidden="true" size={20} />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Confirm Password */}
@@ -162,21 +179,36 @@ function SignUp() {
                   Confirm Password
                 </label>
 
-                <input
-                  id="confirm-password"
-                  name="confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => {
-                    setConfirmPassword(event.target.value);
-                    setError("");
-                  }}
-                  placeholder="Confirm your password"
-                  autoComplete="new-password"
-                  required
-                  disabled={busy}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
-                />
+                <div className="relative">
+                  <input
+                    id="confirm-password"
+                    name="confirm-password"
+                    type={showPasswords ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(event) => {
+                      setConfirmPassword(event.target.value);
+                      setError("");
+                    }}
+                    placeholder="Confirm your password"
+                    autoComplete="new-password"
+                    required
+                    disabled={busy}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-4 py-3.5 pr-12 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswords((shown) => !shown)}
+                    aria-label={showPasswords ? "Hide passwords" : "Show passwords"}
+                    disabled={busy}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-zinc-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+                  >
+                    {showPasswords ? (
+                      <EyeOff aria-hidden="true" size={20} />
+                    ) : (
+                      <Eye aria-hidden="true" size={20} />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Error */}

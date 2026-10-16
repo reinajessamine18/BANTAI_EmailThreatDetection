@@ -19,7 +19,8 @@ EXPECTED_TABLES = {
     "users", "user_sessions", "user_settings", "system_settings", "model_versions",
     "feature_definitions", "scans", "scan_features", "shap_results", "explanations",
     "extracted_urls", "scan_feedback", "audit_logs",
-    "scan_token_contributions", "token_feature_map",
+    "scan_token_contributions", "token_feature_map", "password_reset_tokens",
+    "password_reset_requests", "guest_scan_reservations",
 }
 
 
@@ -121,6 +122,41 @@ def test_second_run_is_a_no_op(tmp_path):
     assert _one(db, "SELECT COUNT(*) FROM model_versions")[0] == before
 
 
+def test_revision_two_database_migrates_without_losing_users(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db, SQL_DIR, None)
+    conn = _connect(db)
+    conn.execute(
+        "INSERT INTO users (full_name, email, password_hash) VALUES ('Ana', 'a@example.com', 'hash')"
+    )
+    conn.execute(
+        "INSERT INTO user_settings (user_id, auto_save_scan_logs) VALUES (1, 1)"
+    )
+    conn.execute("DROP TABLE password_reset_requests")
+    conn.execute("DROP TABLE password_reset_tokens")
+    conn.execute("DROP TABLE guest_scan_reservations")
+    conn.execute("PRAGMA user_version = 2")
+    conn.commit()
+    conn.close()
+
+    result = init_db(db, SQL_DIR, None)
+    assert not result.created
+    assert _one(db, "PRAGMA user_version")[0] == 5
+    assert _one(db, "SELECT email FROM users WHERE user_id = 1")[0] == "a@example.com"
+    assert _one(db, "SELECT auto_save_scan_logs FROM user_settings WHERE user_id = 1")[0] == 1
+    auto_save_column = next(
+        row for row in _all(db, "PRAGMA table_info(user_settings)")
+        if row[1] == "auto_save_scan_logs"
+    )
+    assert auto_save_column[4] == "0"
+    names = {row[0] for row in _all(db, "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {
+        "password_reset_tokens",
+        "password_reset_requests",
+        "guest_scan_reservations",
+    } <= names
+
+
 def test_database_with_old_schema_version_is_rejected_with_clear_message(tmp_path):
     db = tmp_path / "t.db"
     init_db(db, SQL_DIR, None)
@@ -129,7 +165,7 @@ def test_database_with_old_schema_version_is_rejected_with_clear_message(tmp_pat
     conn.close()
     with pytest.raises(DatabaseInitError) as err:
         init_db(db, SQL_DIR, None)
-    assert "delete" in str(err.value) and "t.db" in str(err.value)
+    assert "migration" in str(err.value) and "t.db" in str(err.value)
 
 
 def test_schema_without_version_declaration_is_rejected(tmp_path):

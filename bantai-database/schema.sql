@@ -14,6 +14,11 @@
 --   * users.profile_picture, extra audit event types, token_feature_map.
 --   * PRAGMA user_version (end of file) marks the schema version; the backend
 --     refuses to run against a database with a different version.
+-- REVISION 3 adds hashed, expiring password-reset tokens and short-lived
+-- per-IP request counters. Existing revision-2 databases migrate in place.
+-- REVISION 4 defaults Auto-save Scan Logs to off; existing saved preferences
+-- remain unchanged during migration.
+-- REVISION 5 enforces the guest scan allowance on the server.
 -- =====================================================================
 PRAGMA foreign_keys = ON;
 
@@ -67,7 +72,7 @@ CREATE INDEX ix_sessions_user ON user_sessions (user_id);
 CREATE TABLE user_settings (
     user_id             INTEGER PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
     shap_advanced_mode  INTEGER NOT NULL DEFAULT 1 CHECK (shap_advanced_mode IN (0,1)),
-    auto_save_scan_logs INTEGER NOT NULL DEFAULT 1 CHECK (auto_save_scan_logs IN (0,1)),
+    auto_save_scan_logs INTEGER NOT NULL DEFAULT 0 CHECK (auto_save_scan_logs IN (0,1)),
     updated_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 
@@ -295,6 +300,19 @@ CREATE TABLE audit_logs (
     user_agent   TEXT,
     created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
+
+-- Guest scan quota reservations count only successful scans and short-lived
+-- in-flight requests. Client IPs are retained only for the rolling quota window.
+CREATE TABLE guest_scan_reservations (
+    reservation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_ip      TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    completed_at   TEXT
+);
+CREATE INDEX ix_guest_scan_reservations_ip_created
+    ON guest_scan_reservations (client_ip, created_at);
+CREATE INDEX ix_guest_scan_reservations_ip_completed
+    ON guest_scan_reservations (client_ip, completed_at);
 CREATE INDEX ix_audit_time  ON audit_logs (created_at DESC);
 CREATE INDEX ix_audit_event ON audit_logs (event_type);
 CREATE INDEX ix_audit_user  ON audit_logs (user_id);
@@ -319,5 +337,26 @@ SELECT  s.scan_id,
         s.inference_ms
 FROM scans s;
 
--- [R2] Schema version. Bump this whenever a table/column/CHECK changes.
-PRAGMA user_version = 2;
+-- ---------------------------------------------------------------------
+-- 15. PASSWORD RECOVERY (only SHA-256 token hashes are persisted)
+-- ---------------------------------------------------------------------
+CREATE TABLE password_reset_tokens (
+    reset_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    token_hash  TEXT NOT NULL UNIQUE,
+    expires_at  TEXT NOT NULL,
+    used_at     TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+CREATE INDEX ix_password_reset_user ON password_reset_tokens (user_id);
+
+CREATE TABLE password_reset_requests (
+    request_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_ip   TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX ix_password_reset_requests_ip_time
+    ON password_reset_requests (client_ip, created_at);
+
+-- Schema version. Bump this whenever a table/column/CHECK changes.
+PRAGMA user_version = 5;

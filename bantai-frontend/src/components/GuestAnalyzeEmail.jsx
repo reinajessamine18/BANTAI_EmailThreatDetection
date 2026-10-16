@@ -6,14 +6,9 @@ import uploadIcon from "../assets/upload-icon.png";
 import AnalysisResults from "./AnalysisResults";
 import { friendlyError, scanEmail } from "../api/client"; 
 
-const MAX_FREE_SCANS = 3;
-const STORAGE_KEY = "bantaiGuestScanCount";
-
 function GuestAnalyzeEmail() {
   const [inputMethod, setInputMethod] = useState("upload");
-  const [scanCount, setScanCount] = useState(
-    () => Number(sessionStorage.getItem(STORAGE_KEY) || "0")
-  );
+  const [limitReached, setLimitReached] = useState(false);
   const [scanCompleted, setScanCompleted] = useState(false);
   const [result, setResult] = useState(null);
   const [scanning, setScanning] = useState(false);
@@ -23,8 +18,6 @@ function GuestAnalyzeEmail() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
-
-  const limitReached = scanCount >= MAX_FREE_SCANS;
 
   const handleFile = (file) => {
     if (!file) return;
@@ -68,13 +61,13 @@ function GuestAnalyzeEmail() {
         text: inputMethod === "paste" ? pasteContent : undefined,
         signedIn: false,
       });
-      const nextCount = scanCount + 1;
-      sessionStorage.setItem(STORAGE_KEY, String(nextCount));
-      setScanCount(nextCount);
       setResult(data);
       setScannedAt(data.scannedAt);
       setScanCompleted(true);
     } catch (err) {
+      if (err?.code === "guest_scan_limit_reached") {
+        setLimitReached(true);
+      }
       setScanError(friendlyError(err));
     } finally {
       setScanning(false);
@@ -176,19 +169,6 @@ function GuestAnalyzeEmail() {
                 <h1 className="mt-4 text-3xl font-bold tracking-tight">
                   Analyze Email
                 </h1>
-
-                {/* SCAN COUNTER */}
-                <div className="mt-4 inline-flex items-center rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2">
-
-                  <span className="text-xs text-zinc-500">
-                    Free scans used:
-                  </span>
-
-                  <span className="ml-2 text-sm font-bold text-lime-400">
-                    {scanCount} / {MAX_FREE_SCANS}
-                  </span>
-
-                </div>
 
               </div>
 
@@ -371,8 +351,8 @@ function GuestAnalyzeEmail() {
               <div className="mt-6 flex justify-center px-4 text-center">
 
                 <p className="text-[11px] leading-5 text-zinc-600">
-                  Email content is not sent or saved yet. Analysis will be
-                  available once the FastAPI backend is connected.
+                  Email body content is not stored. Guest scans are limited to
+                  three successful scans per IP address in a rolling 24-hour period.
                 </p>
 
               </div>
@@ -795,4 +775,3 @@ export default GuestAnalyzeEmail;
 // }
 
 // export default GuestAnalyzeEmail;
-

@@ -5,7 +5,11 @@ function Navbar() {
     <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
         {/* BANTAI */}
-        <Link to="/" className="flex items-center">
+        <Link
+          to="/"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          className="flex items-center"
+        >
           <span className="text-2xl font-black italic tracking-tight text-white">
             BANTAI<span className="text-lime-400">.</span>
           </span>

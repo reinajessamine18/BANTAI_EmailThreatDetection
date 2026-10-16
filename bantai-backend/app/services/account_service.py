@@ -113,10 +113,10 @@ def change_password(execute: Execute, user_id: int, session_id: Optional[int], c
 
 
 def get_preferences(execute: Execute, user_id: int) -> Dict[str, bool]:
-    row = repo.get_preferences(execute, user_id)       # no row yet = the defaults (both on)
+    row = repo.get_preferences(execute, user_id)
     return {
         "shapAdvancedMode": True if row is None else bool(row["shap_advanced_mode"]),
-        "autoSaveScanLogs": True if row is None else bool(row["auto_save_scan_logs"]),
+        "autoSaveScanLogs": False if row is None else bool(row["auto_save_scan_logs"]),
     }
 
 

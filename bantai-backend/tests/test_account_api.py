@@ -173,19 +173,18 @@ def test_guessing_the_current_password_with_a_stolen_token_gets_locked_out(monke
 def test_preferences_default_update_and_control_whether_scans_are_saved(monkeypatch):
     with make_client(monkeypatch) as client:
         h = bearer(register(client).json()["accessToken"])
-        assert client.get(f"{API}/account/settings", headers=h).json() == {"shapAdvancedMode": True, "autoSaveScanLogs": True}
+        assert client.get(f"{API}/account/settings", headers=h).json() == {"shapAdvancedMode": True, "autoSaveScanLogs": False}
 
+        not_saved = client.post(f"{API}/scans", headers=h, json={"inputMethod": "raw_text", "content": CONTENT}).json()
+        assert not_saved["saved"] is False and not_saved["scanId"] is None
+
+        assert client.get(f"{API}/scans", headers=h).json()["total"] == 0
+
+        on = client.patch(f"{API}/account/settings", headers=h, json={"autoSaveScanLogs": True})
+        assert on.status_code == 200 and on.json() == {"shapAdvancedMode": True, "autoSaveScanLogs": True}
         saved = client.post(f"{API}/scans", headers=h, json={"inputMethod": "raw_text", "content": CONTENT}).json()
         assert saved["saved"] is True
-
-        off = client.patch(f"{API}/account/settings", headers=h, json={"autoSaveScanLogs": False})
-        assert off.status_code == 200 and off.json() == {"shapAdvancedMode": True, "autoSaveScanLogs": False}
-        unsaved = client.post(f"{API}/scans", headers=h, json={"inputMethod": "raw_text", "content": CONTENT}).json()
-        assert unsaved["saved"] is False and unsaved["scanId"] is None and unsaved["threatScore"] == 92
-        assert client.get(f"{API}/scans", headers=h).json()["total"] == 1     # only the first scan was kept
-
-        client.patch(f"{API}/account/settings", headers=h, json={"autoSaveScanLogs": True})
-        assert client.post(f"{API}/scans", headers=h, json={"inputMethod": "raw_text", "content": CONTENT}).json()["saved"] is True
+        assert client.get(f"{API}/scans", headers=h).json()["total"] == 1
 
 
 @pytest.mark.parametrize("body", [{"autoSaveScanLogs": "yes"}, {"shapAdvancedMode": 1}, {"other": True}])

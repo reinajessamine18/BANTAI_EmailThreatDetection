@@ -18,6 +18,7 @@ from typing import Callable, Dict, Optional
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.services import scan_store
+from app.services.guest_scan_quota import complete_guest_scan
 from app.services.catalog import CatalogError, load_catalog
 from app.services.decision import assess
 from app.services.ml_service import MlUnavailable
@@ -83,6 +84,7 @@ def perform_scan(
     max_body_chars_fn: Callable[[], int],
     now_fn: Callable[[], str] = _utc_now,
     timer: Callable[[], float] = time.perf_counter,
+    guest_reservation_id: Optional[int] = None,
 ) -> Dict[str, object]:
     file_name = clean_file_name(submission.file_name)
     context = {"input_method": submission.input_method, "content_chars": len(submission.content)}
@@ -166,6 +168,8 @@ def perform_scan(
             ip_address=client.ip,
             user_agent=client.user_agent,
         )
+        if guest_reservation_id is not None:
+            complete_guest_scan(session, guest_reservation_id)
         session.commit()
     except SQLAlchemyError as exc:
         session.rollback()

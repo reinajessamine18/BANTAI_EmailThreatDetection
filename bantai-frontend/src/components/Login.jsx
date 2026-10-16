@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 
 import backgroundImage from "../assets/bgimg-login.png";
 import shieldIcon from "../assets/shield-icon.png";
 import lockIcon from "../assets/lock-icon.png";
-import eyeIcon from "../assets/eye-icon.png";
 import { friendlyError, login } from "../api/client";
 
 function Login() {
@@ -139,11 +139,11 @@ function Login() {
                     disabled={busy}
                     className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 transition hover:bg-white/10 disabled:opacity-50"
                   >
-                    <img
-                      src={eyeIcon}
-                      alt=""
-                      className="h-5 w-5 object-contain"
-                    />
+                    {showPassword ? (
+                      <EyeOff aria-hidden="true" size={20} />
+                    ) : (
+                      <Eye aria-hidden="true" size={20} />
+                    )}
                   </button>
                 </div>
               </div>

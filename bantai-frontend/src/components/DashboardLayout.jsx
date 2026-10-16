@@ -11,6 +11,9 @@ import { getProfile, logout } from "../api/client";
 function DashboardLayout() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const loadUser = async () => {
   try {
@@ -44,10 +47,27 @@ function DashboardLayout() {
     };
   }, []);
 
-  const handleLogout = async () => {
-  await logout();
-  navigate("/");
-};
+  useEffect(() => {
+    const handleUnsavedChanges = (event) => {
+      setHasUnsavedChanges(event.detail);
+    };
+
+    window.addEventListener("bantai:unsaved-changes", handleUnsavedChanges);
+
+    return () => {
+      window.removeEventListener("bantai:unsaved-changes", handleUnsavedChanges);
+    };
+  }, []);
+
+  const confirmLogout = async () => {
+    setIsLoggingOut(true);
+    await logout();
+    navigate("/");
+  };
+
+  const closeLogoutConfirmation = () => {
+    if (!isLoggingOut) setShowLogoutConfirmation(false);
+  };
 
   // const handleLogout = () => {
   //   localStorage.removeItem("bantaiAuthenticated");
@@ -161,13 +181,55 @@ function DashboardLayout() {
 
           <button
             type="button"
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirmation(true)}
             className="flex w-full items-center rounded-lg px-3 py-3 text-sm font-medium text-zinc-500 transition hover:bg-red-500/10 hover:text-red-400"
           >
             <span>Log Out</span>
           </button>
         </div>
       </aside>
+
+      {showLogoutConfirmation && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-dialog-title"
+            aria-describedby="logout-dialog-description"
+            className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl"
+          >
+            <h2 id="logout-dialog-title" className="text-lg font-bold text-white">
+              Log out?
+            </h2>
+            <p
+              id="logout-dialog-description"
+              className="mt-3 text-sm leading-6 text-zinc-400"
+            >
+              {hasUnsavedChanges
+                ? "You have unsaved profile or settings changes. Logging out now may cause them to be lost. Do you want to log out anyway?"
+                : "Are you sure you want to log out of BANTAI?"}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeLogoutConfirmation}
+                disabled={isLoggingOut}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Stay signed in
+              </button>
+              <button
+                type="button"
+                onClick={confirmLogout}
+                disabled={isLoggingOut}
+                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoggingOut ? "Logging out..." : "Log out"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main */}
       <main className="ml-64 min-h-screen bg-black">

@@ -73,6 +73,23 @@ test("login stores the token; the password is never written to browser storage",
   assert.ok(!everything.includes("SuperSecret"));
 });
 
+test("password recovery requests and applies a reset token without auth", async () => {
+  reset();
+  await api.requestPasswordReset("a@example.com");
+  assert.equal(calls[0].url, "http://localhost:8000/api/v1/auth/password-reset/request");
+  assert.equal(calls[0].method, "POST");
+  assert.equal(lastHeaders().Authorization, undefined);
+  assert.deepEqual(JSON.parse(calls[0].body), { email: "a@example.com" });
+
+  await api.resetPassword({ token: "opaque-reset-token", newPassword: "new-password-123" });
+  assert.equal(calls[1].url, "http://localhost:8000/api/v1/auth/password-reset/confirm");
+  assert.equal(calls[1].method, "POST");
+  assert.deepEqual(JSON.parse(calls[1].body), {
+    token: "opaque-reset-token",
+    new_password: "new-password-123",
+  });
+});
+
 test("logout clears the token even when the server is unreachable", async () => {
   reset(); api.setToken("tok");
   reply = () => new Error("offline");
@@ -121,6 +138,7 @@ test("error shapes: detail object, validation list, network failure, non-JSON bo
 
 test("friendlyError maps known codes and never leaks unknown internals", () => {
   assert.match(api.friendlyError(new api.ApiError(503, "ml_unavailable", "x")), /unavailable/);
+  assert.match(api.friendlyError(new api.ApiError(429, "guest_scan_limit_reached", "x")), /free guest scan limit/);
   assert.match(api.friendlyError(new api.ApiError(401, "invalid_token", "x")), /sign in again/);
   assert.equal(api.friendlyError(new api.ApiError(403, "invalid_current_password", "Server text.")), "Server text.");
   assert.match(api.friendlyError(new TypeError("boom")), /Something went wrong/);

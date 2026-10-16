@@ -163,11 +163,11 @@ def test_sso_account_without_a_password_cannot_use_password_change(tmp_path):
 
 
 # ------------------------------------------------------------------------ preferences
-def test_preferences_default_to_on_then_update_partially(tmp_path):
+def test_preferences_default_auto_save_to_off_then_update_partially(tmp_path):
     conn, run = world(tmp_path)
-    assert svc.get_preferences(run, 1) == {"shapAdvancedMode": True, "autoSaveScanLogs": True}
+    assert svc.get_preferences(run, 1) == {"shapAdvancedMode": True, "autoSaveScanLogs": False}
     assert svc.update_preferences(run, 1, {"auto_save_scan_logs": False}, NOW) == {"shapAdvancedMode": True, "autoSaveScanLogs": False}
     assert svc.update_preferences(run, 1, {"shap_advanced_mode": False}, NOW) == {"shapAdvancedMode": False, "autoSaveScanLogs": False}
     assert svc.update_preferences(run, 1, {}, NOW) == {"shapAdvancedMode": False, "autoSaveScanLogs": False}
     assert conn.execute("SELECT COUNT(*) FROM user_settings").fetchone()[0] == 1
-    assert svc.get_preferences(run, 2) == {"shapAdvancedMode": True, "autoSaveScanLogs": True}      # other user unaffected
+    assert svc.get_preferences(run, 2) == {"shapAdvancedMode": True, "autoSaveScanLogs": False}

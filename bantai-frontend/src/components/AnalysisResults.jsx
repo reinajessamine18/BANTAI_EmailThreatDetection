@@ -6,7 +6,15 @@ import {
   ShieldAlert,
   ShieldCheck,
   Zap,
+  MessageSquare,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  friendlyError,
+  getPreferences,
+  preferencesToUi,
+  submitFeedback,
+} from "../api/client";
 
 const riskStyles = {
   safe: {
@@ -39,6 +47,75 @@ function AnalysisResults({
   isGuest,
   onBack,
 }) {
+  const [advancedMode, setAdvancedMode] = useState(isGuest ? true : null);
+  const [preferencesError, setPreferencesError] = useState("");
+  const [feedbackCorrect, setFeedbackCorrect] = useState(
+    result?.feedback?.isPredictionCorrect ?? null
+  );
+  const [suggestedLabel, setSuggestedLabel] = useState(
+    result?.feedback?.suggestedLabel || ""
+  );
+  const [explanationHelpful, setExplanationHelpful] = useState(
+    result?.feedback?.explanationHelpful == null
+      ? ""
+      : result.feedback.explanationHelpful
+        ? "yes"
+        : "no"
+  );
+  const [feedbackComment, setFeedbackComment] = useState(
+    result?.feedback?.comment || ""
+  );
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(
+    Boolean(result?.feedback)
+  );
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+
+  useEffect(() => {
+    if (isGuest) return undefined;
+    let cancelled = false;
+    getPreferences()
+      .then((preferences) => {
+        if (!cancelled) {
+          setAdvancedMode(preferencesToUi(preferences).enableShapAdvancedMode);
+          setPreferencesError("");
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAdvancedMode(null);
+          setPreferencesError(friendlyError(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isGuest, result?.scanId]);
+
+  const handleSubmitFeedback = async () => {
+    if (feedbackCorrect === null || !result?.scanId || feedbackSaving) return;
+    setFeedbackSaving(true);
+    setFeedbackError("");
+    setFeedbackMessage("");
+    try {
+      await submitFeedback(result.scanId, {
+        isPredictionCorrect: feedbackCorrect,
+        suggestedLabel:
+          feedbackCorrect === false ? suggestedLabel || undefined : undefined,
+        explanationHelpful:
+          explanationHelpful === "" ? undefined : explanationHelpful === "yes",
+        comment: feedbackComment.trim() || undefined,
+      });
+      setFeedbackSubmitted(true);
+      setFeedbackMessage("Thank you. Your feedback was saved.");
+    } catch (err) {
+      setFeedbackError(friendlyError(err));
+    } finally {
+      setFeedbackSaving(false);
+    }
+  };
+
   const riskKey = result?.riskLevel?.toLowerCase();
   const risk = riskStyles[riskKey] || null;
   const score = Number.isFinite(result?.threatScore)
@@ -263,6 +340,12 @@ function AnalysisResults({
               {result.shap.note}
             </p>
           )}
+          {preferencesError && (
+            <p role="alert" className="mt-3 text-xs leading-5 text-amber-400">
+              Could not load your SHAP display preference. Numeric values are
+              hidden. {preferencesError}
+            </p>
+          )}
 
           {explanations.length === 0 ? (
             <p className="mt-5 flex min-h-36 items-center justify-center rounded-xl border border-zinc-800 bg-black/40 p-4 text-center text-sm leading-6 text-zinc-600">
@@ -279,12 +362,14 @@ function AnalysisResults({
                     <h3 className="text-sm font-bold text-white">
                       {item.title || item.feature || "Feature attribution"}
                     </h3>
-                    {item.kind !== "indicator" && Number.isFinite(item.value) && (
+                    {advancedMode === true &&
+                      item.kind !== "indicator" &&
+                      Number.isFinite(item.value) && (
                       <span className="text-xs font-mono text-lime-400">
                         {item.value > 0 ? "+" : ""}
                         {item.value.toFixed(3)}
                       </span>
-                    )}
+                      )}
                   </div>
                   {item.insight && (
                     <p className="mt-2 text-sm leading-6 text-zinc-400">
@@ -297,6 +382,120 @@ function AnalysisResults({
           )}
         </div>
       </div>
+
+      {!isGuest && result?.scanId != null && (
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-6">
+          <h2 className="flex items-center gap-2 text-base font-bold text-white">
+            <MessageSquare size={17} className="text-lime-400" />
+            Help improve this analysis
+          </h2>
+          {feedbackSubmitted ? (
+            <p role="status" className="mt-4 text-sm text-lime-400">
+              {feedbackMessage || "Feedback has already been submitted for this scan."}
+            </p>
+          ) : (
+            <div className="mt-4 space-y-4">
+              <fieldset>
+                <legend className="text-sm text-zinc-300">
+                  Was the prediction correct?
+                </legend>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  {[
+                    { value: true, label: "Yes, it was correct" },
+                    { value: false, label: "No, it was incorrect" },
+                  ].map((option) => (
+                    <button
+                      key={String(option.value)}
+                      type="button"
+                      aria-pressed={feedbackCorrect === option.value}
+                      onClick={() => setFeedbackCorrect(option.value)}
+                      className={`rounded-lg border px-3 py-2 text-sm transition ${
+                        feedbackCorrect === option.value
+                          ? "border-lime-400 bg-lime-400/10 text-lime-300"
+                          : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {feedbackCorrect === false && (
+                <div>
+                  <label
+                    htmlFor="suggested-label"
+                    className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500"
+                  >
+                    Suggested classification (optional)
+                  </label>
+                  <select
+                    id="suggested-label"
+                    value={suggestedLabel}
+                    onChange={(event) => setSuggestedLabel(event.target.value)}
+                    className="w-full rounded-lg border border-zinc-800 bg-black px-3 py-2.5 text-sm text-white outline-none focus:border-lime-400"
+                  >
+                    <option value="">Choose a classification</option>
+                    <option value="safe">Safe</option>
+                    <option value="suspicious">Suspicious</option>
+                    <option value="phishing">Phishing</option>
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="explanation-helpful"
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500"
+                >
+                  Was the explanation helpful? (optional)
+                </label>
+                <select
+                  id="explanation-helpful"
+                  value={explanationHelpful}
+                  onChange={(event) => setExplanationHelpful(event.target.value)}
+                  className="w-full rounded-lg border border-zinc-800 bg-black px-3 py-2.5 text-sm text-white outline-none focus:border-lime-400"
+                >
+                  <option value="">No response</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="feedback-comment"
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500"
+                >
+                  Comment (optional)
+                </label>
+                <textarea
+                  id="feedback-comment"
+                  value={feedbackComment}
+                  onChange={(event) => setFeedbackComment(event.target.value)}
+                  maxLength={1000}
+                  rows={3}
+                  className="w-full resize-y rounded-lg border border-zinc-800 bg-black px-3 py-2.5 text-sm text-white outline-none focus:border-lime-400"
+                />
+              </div>
+
+              {feedbackError && (
+                <p role="alert" className="text-sm text-red-400">
+                  {feedbackError}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={handleSubmitFeedback}
+                disabled={feedbackCorrect === null || feedbackSaving}
+                className="rounded-lg bg-lime-400 px-4 py-2.5 text-sm font-bold text-black transition hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {feedbackSaving ? "Submitting..." : "Submit feedback"}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-zinc-900 pt-4 text-xs text-zinc-600">
         <span className="inline-flex items-center gap-2">

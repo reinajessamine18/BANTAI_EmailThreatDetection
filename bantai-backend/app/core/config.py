@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]   # bantai-backend/
@@ -36,6 +37,17 @@ class Settings(BaseSettings):
 
     # Vite dev server by default.
     cors_origins: list[str] = ["http://localhost:5173"]
+
+    # Password recovery uses SMTP STARTTLS. Reset links are short-lived and
+    # sent only after the SMTP settings are configured.
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_sender: str | None = None
+    frontend_base_url: str = "http://localhost:5173"
+    password_reset_token_ttl_minutes: int = Field(default=30, ge=5, le=1440)
+    password_reset_requests_per_hour: int = Field(default=5, ge=1, le=100)
 
 
 @lru_cache(maxsize=1)

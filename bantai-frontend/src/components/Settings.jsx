@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import eyeIcon from "../assets/eye-icon.png";
+import { Eye, EyeOff } from "lucide-react";
 import {
   changePassword,
   friendlyError,
@@ -34,13 +34,39 @@ function Settings() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
+  const [pendingPreferenceSaves, setPendingPreferenceSaves] = useState(0);
   const [preferencesError, setPreferencesError] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
   const [profileError, setProfileError] = useState("");
   const [health, setHealth] = useState(null);
 
   const fileInputRef = useRef(null);
+
+  const hasUnsavedChanges =
+    (user !== null &&
+      (name.trim() !== (user.fullName || "").trim() ||
+        email.trim().toLowerCase() !== (user.email || "").toLowerCase() ||
+        profilePicture !== (user.profilePicture || ""))) ||
+    (email.trim().toLowerCase() !== (user?.email || "").toLowerCase() &&
+      Boolean(emailPassword)) ||
+    Boolean(currentPassword || newPassword || confirmPassword) ||
+    pendingPreferenceSaves > 0;
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("bantai:unsaved-changes", { detail: hasUnsavedChanges })
+    );
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("bantai:unsaved-changes", { detail: false })
+      );
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,6 +204,7 @@ function Settings() {
     const previous = preferences;
     const next = { ...preferences, [key]: !preferences[key] };
     setPreferences(next);
+    setPendingPreferenceSaves((count) => count + 1);
     try {
       setPreferences(
         preferencesToUi(await updatePreferences(preferencesToApi({ [key]: next[key] })))
@@ -186,6 +213,8 @@ function Settings() {
     } catch (err) {
       setPreferences(previous);
       setPreferencesError(friendlyError(err));
+    } finally {
+      setPendingPreferenceSaves((count) => count - 1);
     }
   };
 
@@ -331,16 +360,30 @@ function Settings() {
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500">
                       Current Password
                     </label>
-                    <input
-                      type="password"
-                      value={emailPassword}
-                      onChange={(event) => {
-                        setEmailPassword(event.target.value);
-                        setProfileError("");
-                      }}
-                      placeholder="Enter your current password to change email"
-                      className="w-full rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showEmailPassword ? "text" : "password"}
+                        value={emailPassword}
+                        onChange={(event) => {
+                          setEmailPassword(event.target.value);
+                          setProfileError("");
+                        }}
+                        placeholder="Enter your current password to change email"
+                        className="w-full rounded-lg border border-zinc-800 bg-black px-4 py-3 pr-12 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEmailPassword((shown) => !shown)}
+                        aria-label={showEmailPassword ? "Hide password" : "Show password"}
+                        className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md p-1 text-zinc-400 transition hover:bg-white/10 hover:text-white"
+                      >
+                        {showEmailPassword ? (
+                          <EyeOff aria-hidden="true" size={20} />
+                        ) : (
+                          <Eye aria-hidden="true" size={20} />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -562,15 +605,11 @@ function Settings() {
                               : "Show current password"
                           }
                         >
-                          <img
-                            src={eyeIcon}
-                            alt=""
-                            className={`h-5 w-5 object-contain ${
-                              showCurrentPassword
-                                ? "opacity-100"
-                                : "opacity-60"
-                            }`}
-                          />
+                          {showCurrentPassword ? (
+                            <EyeOff aria-hidden="true" size={20} />
+                          ) : (
+                            <Eye aria-hidden="true" size={20} />
+                          )}
                         </button>
                       </div>
                     </div>
@@ -603,15 +642,11 @@ function Settings() {
                               : "Show new password"
                           }
                         >
-                          <img
-                            src={eyeIcon}
-                            alt=""
-                            className={`h-5 w-5 object-contain ${
-                              showNewPassword
-                                ? "opacity-100"
-                                : "opacity-60"
-                            }`}
-                          />
+                          {showNewPassword ? (
+                            <EyeOff aria-hidden="true" size={20} />
+                          ) : (
+                            <Eye aria-hidden="true" size={20} />
+                          )}
                         </button>
                       </div>
                     </div>
@@ -646,15 +681,11 @@ function Settings() {
                               : "Show confirmed password"
                           }
                         >
-                          <img
-                            src={eyeIcon}
-                            alt=""
-                            className={`h-5 w-5 object-contain ${
-                              showConfirmPassword
-                                ? "opacity-100"
-                                : "opacity-60"
-                            }`}
-                          />
+                          {showConfirmPassword ? (
+                            <EyeOff aria-hidden="true" size={20} />
+                          ) : (
+                            <Eye aria-hidden="true" size={20} />
+                          )}
                         </button>
                       </div>
                     </div>

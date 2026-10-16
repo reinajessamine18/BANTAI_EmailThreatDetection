@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models mirroring bantai-database/schema.sql (schema version 2).
+"""SQLAlchemy ORM models mirroring bantai-database/schema.sql (schema version 5).
 
 IMPORTANT: the SQL files are the source of truth. These classes only *describe*
 existing tables for querying. Never call `Base.metadata.create_all()`: it would
@@ -66,8 +66,36 @@ class UserSettings(Base):
         ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True
     )
     shap_advanced_mode: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
-    auto_save_scan_logs: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
+    auto_save_scan_logs: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
     updated_at: Mapped[str] = mapped_column(Text, server_default=_NOW)
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    reset_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    expires_at: Mapped[str] = mapped_column(Text)
+    used_at: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, server_default=_NOW)
+
+
+class PasswordResetRequest(Base):
+    __tablename__ = "password_reset_requests"
+
+    request_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_ip: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text)
+
+
+class GuestScanReservation(Base):
+    __tablename__ = "guest_scan_reservations"
+
+    reservation_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_ip: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text)
+    completed_at: Mapped[Optional[str]] = mapped_column(Text)
 
 
 class SystemSetting(Base):

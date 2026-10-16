@@ -103,6 +103,66 @@ def test_model_down_gives_503_and_is_audited(monkeypatch):
     assert ("SCAN_REJECTED", 503) in [(e, s) for e, s, _ in audit_rows()]
 
 
+def test_guest_scan_limit_rejects_fourth_successful_scan(monkeypatch):
+    with make_client(monkeypatch) as client:
+        payload = {"inputMethod": "raw_text", "content": "Please verify your password now."}
+        responses = [client.post(URL, json=payload) for _ in range(3)]
+        limited = client.post(URL, json=payload)
+
+    assert [response.status_code for response in responses] == [200, 200, 200]
+    assert limited.status_code == 429
+    assert limited.json()["detail"]["code"] == "guest_scan_limit_reached"
+    assert limited.headers["cache-control"] == "no-store"
+    conn = sqlite3.connect(get_settings().database_path)
+    try:
+        reservations = conn.execute(
+            "SELECT completed_at FROM guest_scan_reservations ORDER BY reservation_id"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(reservations) == 3 and all(row[0] is not None for row in reservations)
+
+
+def test_failed_guest_scan_does_not_consume_quota(monkeypatch):
+    with make_client(monkeypatch) as client:
+        invalid = client.post(
+            URL,
+            json={"inputMethod": "raw_text", "content": "   "},
+        )
+        successes = [
+            client.post(URL, json={"inputMethod": "raw_text", "content": "Please verify now."})
+            for _ in range(3)
+        ]
+
+    assert invalid.status_code == 422
+    assert [response.status_code for response in successes] == [200, 200, 200]
+
+
+def test_signed_in_scans_are_not_limited_by_guest_quota(monkeypatch):
+    with make_client(monkeypatch) as client:
+        payload = {"inputMethod": "raw_text", "content": "Please verify your password now."}
+        for _ in range(3):
+            assert client.post(URL, json=payload).status_code == 200
+        assert client.post(URL, json=payload).status_code == 429
+        registration = client.post(
+            "/api/v1/auth/register",
+            json={
+                "full_name": "Ana Test",
+                "email": "guest-limit@example.com",
+                "password": "Correct horse battery 42!",
+            },
+        )
+        token = registration.json()["accessToken"]
+        signed_in_scan = client.post(
+            URL,
+            headers={"Authorization": f"Bearer {token}"},
+            json=payload,
+        )
+
+    assert registration.status_code == 201
+    assert signed_in_scan.status_code == 200
+
+
 def test_real_model_end_to_end(monkeypatch):
     """Real TF-IDF + XGBoost + SHAP. Skipped when the model cannot be loaded."""
     with TestClient(main_module.create_app()) as client:

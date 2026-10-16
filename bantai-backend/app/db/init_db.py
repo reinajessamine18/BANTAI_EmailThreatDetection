@@ -6,9 +6,9 @@ This module only *runs* the SQL files; it does not redefine tables.
     fresh database : schema.sql -> seed.sql -> register the deployed model
     existing       : check the schema version, then register the model if not yet done
 
-`schema.sql` declares its version with `PRAGMA user_version = N;`. An existing database
-with a different version is rejected with a clear message (in development: delete the
-database file and let it be rebuilt). There is deliberately no migration runner yet.
+`schema.sql` declares its version with `PRAGMA user_version = N;`. Existing databases
+are upgraded through sequential scripts in `bantai-database/migrations/`; unsupported
+version paths are rejected without rebuilding or deleting the database.
 
 A fresh database is built in a temporary file and moved into place only after
 everything succeeded, so a failed run never leaves a half-built database behind.
@@ -78,14 +78,34 @@ def _required_schema_version(sql_dir: Path) -> int:
     return int(match.group(1))
 
 
-def _check_existing_version(conn: sqlite3.Connection, required: int, db_name: str) -> None:
+def _check_existing_version(
+    conn: sqlite3.Connection, required: int, db_name: str, sql_dir: Path
+) -> None:
     found = conn.execute("PRAGMA user_version").fetchone()[0]
-    if found != required:
+    if found > required:
         raise DatabaseInitError(
             f"database schema version is {found} but the code expects {required}. "
-            f"In development, stop the server and delete '{db_name}' so it is rebuilt "
-            "from bantai-database/schema.sql."
+            f"Database '{db_name}' is newer than this application."
         )
+    while found < required:
+        migration = sql_dir / "migrations" / f"{found}_to_{found + 1}.sql"
+        if not migration.is_file():
+            raise DatabaseInitError(
+                f"database '{db_name}' schema version is {found} but the code expects {required}; "
+                f"no migration is available for '{migration.name}'."
+            )
+        try:
+            conn.executescript(_read_sql(migration))
+        except sqlite3.Error:
+            if conn.in_transaction:
+                conn.rollback()
+            raise
+        migrated = conn.execute("PRAGMA user_version").fetchone()[0]
+        if migrated != found + 1:
+            raise DatabaseInitError(
+                f"migration '{migration.name}' did not set the expected schema version."
+            )
+        found = migrated
 
 
 def register_baseline_model(conn: sqlite3.Connection, ml_dir: Path) -> bool:
@@ -197,7 +217,7 @@ def init_db(
         try:
             conn.execute("PRAGMA foreign_keys = ON")
             if not result.created:
-                _check_existing_version(conn, result.schema_version, db_path.name)
+                _check_existing_version(conn, result.schema_version, db_path.name, sql_dir)
             if ml_dir is not None:
                 result.model_registered = register_baseline_model(conn, Path(ml_dir))
         finally:

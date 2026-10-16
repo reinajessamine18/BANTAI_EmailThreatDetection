@@ -40,7 +40,7 @@ const metrics = [
     icon: Activity,
   },
   {
-    label: "Phishing Blocked",
+    label: "Phishing Detected",
     value: "0",
     detail: "No detections yet",
     color: "text-red-400",
@@ -87,7 +87,7 @@ function Dashboard() {
   const m = data?.metrics;
   const values = {
     "Total Emails Scanned": m ? String(m.totalScanned) : "—",
-    "Phishing Blocked": m ? String(m.phishingBlocked) : "—",
+    "Phishing Detected": m ? String(m.phishingBlocked) : "—",
     "Safe Emails": m ? String(m.safeEmails) : "—",
     "Avg. Inference Time":
       m?.avgInferenceMs != null ? `${m.avgInferenceMs} ms` : "—",

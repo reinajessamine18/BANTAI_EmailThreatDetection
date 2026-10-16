@@ -22,6 +22,10 @@ def make_user(email):
     conn = sqlite3.connect(get_settings().database_path)
     try:
         cursor = conn.execute("INSERT INTO users (full_name, email, password_hash) VALUES ('T', ?, 'h')", (email,))
+        conn.execute(
+            "INSERT INTO user_settings (user_id, auto_save_scan_logs) VALUES (?, 1)",
+            (cursor.lastrowid,),
+        )
         conn.commit()
         return cursor.lastrowid
     finally:

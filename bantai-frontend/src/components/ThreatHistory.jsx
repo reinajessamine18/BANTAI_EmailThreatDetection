@@ -1,5 +1,5 @@
 import { Download, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchHistoryCsv, friendlyError, listHistory, saveBlob } from "../api/client";
 
@@ -14,6 +14,8 @@ function ThreatHistory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const historyRequestId = useRef(0);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -22,8 +24,7 @@ function ThreatHistory() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError("");
+    const requestId = ++historyRequestId.current;
     listHistory({
       q: debouncedSearch,
       level: threatFilter,
@@ -32,21 +33,53 @@ function ThreatHistory() {
       offset: 0,
     })
       .then((data) => {
-        if (!cancelled) {
+        if (!cancelled && requestId === historyRequestId.current) {
           setItems(data.items);
           setTotal(data.total);
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(friendlyError(err));
+        if (!cancelled && requestId === historyRequestId.current) {
+          setError(friendlyError(err));
+        }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && requestId === historyRequestId.current) {
+          setLoading(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [debouncedSearch, threatFilter, dateFilter]);
+
+  const handleLoadMore = async () => {
+    if (loadingMore || loading || items.length >= total) return;
+    const requestId = historyRequestId.current;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const data = await listHistory({
+        q: debouncedSearch,
+        level: threatFilter,
+        range: dateFilter,
+        limit: 50,
+        offset: items.length,
+      });
+      if (requestId === historyRequestId.current) {
+        setItems((current) => [...current, ...data.items]);
+        setTotal(data.total);
+      }
+    } catch (err) {
+      if (requestId === historyRequestId.current) {
+        setError(friendlyError(err));
+      }
+    } finally {
+      if (requestId === historyRequestId.current) {
+        setLoadingMore(false);
+      }
+    }
+  };
 
   const handleExport = async () => {
     try {
@@ -83,8 +116,13 @@ function ThreatHistory() {
             <input
               type="text"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by subject, sender, or scan ID..."
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setLoading(true);
+                setLoadingMore(false);
+                setError("");
+              }}
+              placeholder="Search by subject or sender..."
               className="w-full rounded-lg border border-zinc-800 bg-black py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-lime-400 focus:ring-1 focus:ring-lime-400"
             />
           </div>
@@ -92,7 +130,12 @@ function ThreatHistory() {
           {/* Date Filter */}
           <select
             value={dateFilter}
-            onChange={(event) => setDateFilter(event.target.value)}
+            onChange={(event) => {
+              setDateFilter(event.target.value);
+              setLoading(true);
+              setLoadingMore(false);
+              setError("");
+            }}
             className="rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-zinc-400 outline-none transition focus:border-lime-400"
           >
             <option value="all">All Time</option>
@@ -104,7 +147,12 @@ function ThreatHistory() {
           {/* Threat Level Filter */}
           <select
             value={threatFilter}
-            onChange={(event) => setThreatFilter(event.target.value)}
+            onChange={(event) => {
+              setThreatFilter(event.target.value);
+              setLoading(true);
+              setLoadingMore(false);
+              setError("");
+            }}
             className="rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-zinc-400 outline-none transition focus:border-lime-400"
           >
             <option value="all">All Threat Levels</option>
@@ -233,9 +281,19 @@ function ThreatHistory() {
         )}
 
         {!loading && total > items.length && (
-          <p className="border-t border-zinc-800 px-6 py-4 text-sm text-zinc-500">
-            Showing the newest 50 of {total}. Narrow the filters to see others.
-          </p>
+          <div className="flex flex-col items-center gap-3 border-t border-zinc-800 px-6 py-4">
+            <p className="text-sm text-zinc-500">
+              Showing {items.length} of {total} records.
+            </p>
+            <button
+              type="button"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="rounded-lg border border-lime-400 px-4 py-2 text-sm font-semibold text-lime-400 transition hover:bg-lime-400/10 disabled:cursor-wait disabled:opacity-60"
+            >
+              {loadingMore ? "Loading..." : "Load more"}
+            </button>
+          </div>
         )}
       </div>
     </div>

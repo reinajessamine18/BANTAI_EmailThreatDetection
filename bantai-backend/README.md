@@ -27,7 +27,7 @@ uvicorn app.main:app --reload --port 8000
 
 ## Scan API
 
-`POST /api/v1/scans` (guest access until Step 7 adds login)
+`POST /api/v1/scans` (guest access; signed-in users may also scan)
 
 ```json
 { "inputMethod": "eml_upload" | "raw_text",
@@ -43,16 +43,22 @@ Success (200): `riskLevel` (`safe`/`suspicious`/`phishing`), `riskTier`, `threat
 
 Errors: `{"detail": {"code": "...", "message": "..."}}` with 413 (`too_large`,
 `body_too_long`), 422 (`unparseable`, `invalid_base64`, `invalid_encoding`, ...),
-500 (`storage_failed`, `configuration_error`), 503 (`ml_unavailable`).
+429 (`guest_scan_limit_reached`), 500 (`storage_failed`, `configuration_error`),
+503 (`ml_unavailable`, `guest_quota_unavailable`).
 
 Guest scans are recorded without subject or full sender address. Signed-in users with
-"Auto-save Scan Logs" off get an audit entry only. If the record cannot be written, no
+"Auto-save Scan Logs" off get an audit entry only. New accounts default to auto-save off;
+existing saved preferences are preserved through schema migration. If the record cannot be written, no
 result is returned.
+
+Guest requests are limited to three successful scans per client IP in a rolling 24-hour
+window; failed scans release their reservation. The server enforces the limit, so clearing
+browser storage does not reset it. Signed-in scans are not subject to the guest quota.
 
 ## History, dashboard and feedback (sign-in required)
 
-Until Step 7 adds login these return **401**; the tests sign in by overriding
-`get_current_user_optional`. Every query is scoped to the signed-in user.
+These endpoints return **401** without a valid sign-in. The tests authenticate by
+overriding `get_current_user_optional`. Every query is scoped to the signed-in user.
 
 | Endpoint | Purpose |
 |---|---|
@@ -72,9 +78,23 @@ with optional demo data (new databases only):
 python -m app.db.init_db --with-sample
 ```
 
-To start over, stop the server and delete `bantai.db`. This is also required whenever
-`schema.sql` changes its `PRAGMA user_version`: the server refuses to start on a database
-with a different schema version and tells you to delete the file.
+Supported schema upgrades run from `bantai-database/migrations/` when the server starts.
+Keep a backup before deploying schema changes. The server never deletes an existing
+database to upgrade it; it refuses to start if a migration path is missing or the database
+is newer than the application.
+
+## Password recovery
+
+Password recovery sends a single-use link to the account's registered email address.
+The email address by itself is not sufficient to change a password. Configure SMTP
+STARTTLS in `bantai-backend/.env` using the `BANTAI_SMTP_*` variables in `.env.example`,
+and set `BANTAI_FRONTEND_BASE_URL` to the trusted frontend origin. Recovery remains
+disabled until SMTP host and sender are configured.
+
+Implementation defaults (not research requirements): reset links expire after 30 minutes,
+and each client IP may request up to 5 links per hour. Only a SHA-256 token hash is stored;
+successful resets revoke all active sessions. The request endpoint gives the same response
+for known and unknown email addresses to reduce account enumeration.
 
 ## Test
 
@@ -91,5 +111,5 @@ pytest -v
 | 3      | Database layer (SQLAlchemy)                      | done   |
 | 4      | Threat scoring + educational explanations        | done   |
 | 5      | Scan endpoint + audit logging                    | done   |
-| 6      | History / dashboard / feedback endpoints         | this drop |
-| 7      | Auth + settings                                  | pending |
+| 6      | History / dashboard / feedback endpoints         | done   |
+| 7      | Auth + settings                                  | done   |
