@@ -14,7 +14,7 @@ import {
 
 const DEFAULT_PREFERENCES = {
   enableShapAdvancedMode: true,
-  autoSaveScanLogs: false,
+  autoSaveScanLogs: true,
 };
 
 function Settings() {

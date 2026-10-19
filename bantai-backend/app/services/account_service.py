@@ -116,7 +116,7 @@ def get_preferences(execute: Execute, user_id: int) -> Dict[str, bool]:
     row = repo.get_preferences(execute, user_id)
     return {
         "shapAdvancedMode": True if row is None else bool(row["shap_advanced_mode"]),
-        "autoSaveScanLogs": False if row is None else bool(row["auto_save_scan_logs"]),
+        "autoSaveScanLogs": True if row is None else bool(row["auto_save_scan_logs"]),
     }
 
 

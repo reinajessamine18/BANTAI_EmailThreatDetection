@@ -40,9 +40,9 @@ def active_model(session: Session) -> Optional[Tuple[int, str]]:
 
 
 def auto_save_enabled(session: Session, user_id: int) -> bool:
-    """Settings > 'Auto-save Scan Logs'. No settings row yet means off."""
+    """Settings > 'Auto-save Scan Logs'. No settings row yet means on."""
     settings = session.get(UserSettings, user_id)
-    return False if settings is None else bool(settings.auto_save_scan_logs)
+    return True if settings is None else bool(settings.auto_save_scan_logs)
 
 
 def save_scan(

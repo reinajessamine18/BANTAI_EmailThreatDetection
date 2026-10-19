@@ -66,7 +66,7 @@ class UserSettings(Base):
         ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True
     )
     shap_advanced_mode: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
-    auto_save_scan_logs: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    auto_save_scan_logs: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
     updated_at: Mapped[str] = mapped_column(Text, server_default=_NOW)
 
 

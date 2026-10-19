@@ -560,7 +560,7 @@ Replace the paragraph starting "These preferences are saved in this browser only
 ## 8. Decisions and known gaps
 
 1. **Token storage.** Tokens are stored in `localStorage` so users stay signed in across tabs and browser restarts. To migrate a token left in `sessionStorage` by an earlier version, reload the tab that currently has that token; that tab copies it to `localStorage`. Any XSS bug could read the token; avoid unsafe HTML/script injection and keep token lifetimes appropriately limited.
-2. **Auto-save default disagrees.** The Settings screen defaults it **off**; the database and the backend default it **on**. After wiring, the server value wins. Decide the product default, then change `UserSettings` creation in `auth.py` register and the `user_settings` column default.
+2. **Auto-save defaults on for new accounts.** Existing saved preferences are retained, so users who previously turned it off remain opted out.
 3. **The guest "3 free scans" limit is cosmetic.** It lives in `sessionStorage`, so clearing storage resets it, and the backend has no limit. A real limit needs per-IP rate limiting on the server (not built).
 4. **History search by scan ID is not supported.** The search box placeholder mentions "scan ID", but the API searches only subject and sender. Change the placeholder, or ask for the backend change.
 5. **No password reset** until a way to verify the user exists (admin-issued code, or email).

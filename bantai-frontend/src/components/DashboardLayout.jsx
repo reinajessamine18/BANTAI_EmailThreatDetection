@@ -97,8 +97,8 @@ function DashboardLayout() {
     },
   ];
 
-  const displayName = user?.name || "BANTAI User";
-  const email = user?.email || "BANTAI Account";
+  const displayName = user?.fullName || "Account";
+  const email = user?.email || "";
   const profilePicture = user?.profilePicture || "";
 
   const initials = displayName
@@ -155,7 +155,12 @@ function DashboardLayout() {
 
         {/* Account */}
         <div className="border-t border-zinc-800 p-4">
-          <div className="mb-4 flex items-center gap-3 rounded-lg bg-zinc-900/70 p-3">
+          <button
+            type="button"
+            onClick={() => navigate("/app/settings")}
+            aria-label={`Open account profile settings for ${displayName}`}
+            className="mb-4 flex w-full items-center gap-3 rounded-lg bg-zinc-900/70 p-3 text-left transition hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
+          >
             {profilePicture ? (
               <img
                 src={profilePicture}
@@ -177,7 +182,7 @@ function DashboardLayout() {
                 {email}
               </p>
             </div>
-          </div>
+          </button>
 
           <button
             type="button"

@@ -173,7 +173,10 @@ def test_guessing_the_current_password_with_a_stolen_token_gets_locked_out(monke
 def test_preferences_default_update_and_control_whether_scans_are_saved(monkeypatch):
     with make_client(monkeypatch) as client:
         h = bearer(register(client).json()["accessToken"])
-        assert client.get(f"{API}/account/settings", headers=h).json() == {"shapAdvancedMode": True, "autoSaveScanLogs": False}
+        assert client.get(f"{API}/account/settings", headers=h).json() == {"shapAdvancedMode": True, "autoSaveScanLogs": True}
+
+        off = client.patch(f"{API}/account/settings", headers=h, json={"autoSaveScanLogs": False})
+        assert off.status_code == 200 and off.json()["autoSaveScanLogs"] is False
 
         not_saved = client.post(f"{API}/scans", headers=h, json={"inputMethod": "raw_text", "content": CONTENT}).json()
         assert not_saved["saved"] is False and not_saved["scanId"] is None

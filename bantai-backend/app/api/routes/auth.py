@@ -135,7 +135,7 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     user = User(full_name=body.full_name.strip(), email=email, password_hash=hash_password(body.password), auth_provider="local", role="analyst", is_active=True)
     try:
         db.add(user); db.flush()
-        db.add(UserSettings(user_id=user.user_id, auto_save_scan_logs=False))
+        db.add(UserSettings(user_id=user.user_id, auto_save_scan_logs=True))
         token, expires = _issue_session(db, user, request, policy)
         _audit(db, request, user.user_id, "USER_REGISTERED", 201)
         db.commit(); db.refresh(user)
