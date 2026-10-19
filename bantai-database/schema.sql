@@ -1,4 +1,4 @@
--- =====================================================================
+﻿-- =====================================================================
 -- BANTAI: XGBoost-Based Email Threat Detection and Analysis Engine
 -- Database schema (SQLite 3.31+)  |  Group 11
 --
@@ -18,6 +18,7 @@
 -- per-IP request counters. Existing revision-2 databases migrate in place.
 -- REVISION 4 defaults Auto-save Scan Logs to off; existing saved preferences
 -- remain unchanged during migration.
+-- REVISION 5 enables Auto-save Scan Logs by default for all accounts.
 -- REVISION 5 enforces the guest scan allowance on the server.
 -- =====================================================================
 PRAGMA foreign_keys = ON;
@@ -72,7 +73,7 @@ CREATE INDEX ix_sessions_user ON user_sessions (user_id);
 CREATE TABLE user_settings (
     user_id             INTEGER PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
     shap_advanced_mode  INTEGER NOT NULL DEFAULT 1 CHECK (shap_advanced_mode IN (0,1)),
-    auto_save_scan_logs INTEGER NOT NULL DEFAULT 0 CHECK (auto_save_scan_logs IN (0,1)),
+    auto_save_scan_logs INTEGER NOT NULL DEFAULT 1 CHECK (auto_save_scan_logs IN (0,1)),
     updated_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 
@@ -359,4 +360,4 @@ CREATE INDEX ix_password_reset_requests_ip_time
     ON password_reset_requests (client_ip, created_at);
 
 -- Schema version. Bump this whenever a table/column/CHECK changes.
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;
