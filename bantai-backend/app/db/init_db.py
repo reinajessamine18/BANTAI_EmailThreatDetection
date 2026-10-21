@@ -68,6 +68,11 @@ def _now() -> str:
 
 
 _VERSION_RE = re.compile(r"PRAGMA\s+user_version\s*=\s*(\d+)", re.IGNORECASE)
+_GOOGLE_V9_USER_COLUMNS = {
+    "user_id", "full_name", "email", "auth_provider", "sso_subject_id",
+    "sso_idp_entity_id", "role", "job_title", "tier_label", "profile_picture",
+    "is_active", "last_login_at", "created_at", "updated_at",
+}
 
 
 def _required_schema_version(sql_dir: Path) -> int:
@@ -76,6 +81,34 @@ def _required_schema_version(sql_dir: Path) -> int:
     if not match:
         raise DatabaseInitError("schema.sql does not declare PRAGMA user_version")
     return int(match.group(1))
+
+
+def _validate_google_v9_database(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+    if columns != _GOOGLE_V9_USER_COLUMNS:
+        raise DatabaseInitError(
+            "schema-9 migration supports the legacy Google SSO users table only; "
+            "the existing users table has a different set of columns."
+        )
+    unsupported_accounts = conn.execute(
+        "SELECT COUNT(*) FROM users "
+        "WHERE auth_provider <> 'google' OR sso_subject_id IS NULL"
+    ).fetchone()[0]
+    if unsupported_accounts:
+        raise DatabaseInitError(
+            "schema-9 migration found non-Google accounts without password hashes; "
+            "the database was not changed."
+        )
+    extra_objects = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master "
+        "WHERE tbl_name = 'users' AND type IN ('index', 'trigger') "
+        "AND name NOT LIKE 'sqlite_%' AND name <> 'ux_users_sso'"
+    ).fetchone()[0]
+    if extra_objects:
+        raise DatabaseInitError(
+            "schema-9 migration found custom user indexes or triggers; "
+            "the database was not changed."
+        )
 
 
 def _check_existing_version(
@@ -88,12 +121,16 @@ def _check_existing_version(
             f"Database '{db_name}' is newer than this application."
         )
     while found < required:
-        migration = sql_dir / "migrations" / f"{found}_to_{found + 1}.sql"
+        migration = sql_dir / "migrations" / f"{found}_to_{required}.sql"
+        if not migration.is_file():
+            migration = sql_dir / "migrations" / f"{found}_to_{found + 1}.sql"
         if not migration.is_file():
             raise DatabaseInitError(
                 f"database '{db_name}' schema version is {found} but the code expects {required}; "
                 f"no migration is available for '{migration.name}'."
             )
+        if migration.name == "9_to_10.sql":
+            _validate_google_v9_database(conn)
         try:
             conn.executescript(_read_sql(migration))
         except sqlite3.Error:
@@ -101,7 +138,8 @@ def _check_existing_version(
                 conn.rollback()
             raise
         migrated = conn.execute("PRAGMA user_version").fetchone()[0]
-        if migrated != found + 1:
+        expected = int(migration.stem.split("_to_")[-1])
+        if migrated != expected:
             raise DatabaseInitError(
                 f"migration '{migration.name}' did not set the expected schema version."
             )

@@ -44,10 +44,9 @@ function AnalysisResults({
   result,
   fileName,
   scannedAt,
-  isGuest,
   onBack,
 }) {
-  const [advancedMode, setAdvancedMode] = useState(isGuest ? true : null);
+  const [advancedMode, setAdvancedMode] = useState(null);
   const [preferencesError, setPreferencesError] = useState("");
   const [feedbackCorrect, setFeedbackCorrect] = useState(
     result?.feedback?.isPredictionCorrect ?? null
@@ -73,7 +72,6 @@ function AnalysisResults({
   const [feedbackMessage, setFeedbackMessage] = useState("");
 
   useEffect(() => {
-    if (isGuest) return undefined;
     let cancelled = false;
     getPreferences()
       .then((preferences) => {
@@ -91,7 +89,7 @@ function AnalysisResults({
     return () => {
       cancelled = true;
     };
-  }, [isGuest, result?.scanId]);
+  }, [result?.scanId]);
 
   const handleSubmitFeedback = async () => {
     if (feedbackCorrect === null || !result?.scanId || feedbackSaving) return;
@@ -383,7 +381,7 @@ function AnalysisResults({
         </div>
       </div>
 
-      {!isGuest && result?.scanId != null && (
+      {result?.scanId != null && (
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-6">
           <h2 className="flex items-center gap-2 text-base font-bold text-white">
             <MessageSquare size={17} className="text-lime-400" />
@@ -499,14 +497,8 @@ function AnalysisResults({
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-zinc-900 pt-4 text-xs text-zinc-600">
         <span className="inline-flex items-center gap-2">
-          {isGuest ? (
-            <ShieldCheck size={14} className="text-lime-400" />
-          ) : (
-            <Clock3 size={14} className="text-lime-400" />
-          )}
-          {isGuest
-            ? "Guest scans are not saved to an account."
-            : (result?.saved ? "This scan was saved to your account history." : "This scan was not saved (Auto-save Scan Logs is off).") }
+          <Clock3 size={14} className="text-lime-400" />
+          {result?.saved ? "This scan was saved to your account history." : "This scan was not saved (Auto-save Scan Logs is off)."}
         </span>
         <span>The email body is never stored.</span>
       </div>

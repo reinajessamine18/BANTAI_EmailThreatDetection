@@ -34,7 +34,7 @@ try {
 
 - Never start a POST (a scan) from `useEffect`: React StrictMode runs effects twice in development.
 - The token lives in `localStorage` (`bantaiToken`) and is sent only by the client. Never read or write it elsewhere. Because browser scripts can access it, an XSS vulnerability could expose the token.
-- The **guest** page must call `scanEmail({ ..., signedIn: false })` so a stored token is never attached.
+- Email scanning is available only in the authenticated application. The home-page scan button opens `/login`; the legacy `/analyze` route redirects there as well.
 
 ## 3. File by file
 
@@ -152,58 +152,9 @@ const handleLogout = async () => {
 
 Keep the `bantaiUserUpdated` listener (Settings fires it after a save). Replace `user?.name` (line 66) with `user?.fullName`. `profilePicture` (line 68) keeps working: `getProfile()` returns it.
 
-### 3.7 `GuestAnalyzeEmail.jsx`
+### 3.7 `AnalyzeEmail.jsx` (signed-in scanner)
 
-Add `import { friendlyError, scanEmail } from "../api/client";` and these states next to the others:
-
-```jsx
-const [result, setResult] = useState(null);
-const [scanning, setScanning] = useState(false);
-const [scanError, setScanError] = useState("");
-```
-
-**Replace lines 47-67** (`handleScan`). The free-scan counter now increases only after a *successful* scan:
-
-```jsx
-const handleScan = async () => {
-  if (limitReached || scanning) return;
-
-  if (inputMethod === "upload" && !selectedFile) {
-    alert("Select an .eml file before scanning.");
-    return;
-  }
-  if (inputMethod === "paste" && !pasteContent.trim()) {
-    alert("Paste email content before scanning.");
-    return;
-  }
-
-  setScanning(true);
-  setScanError("");
-  try {
-    const data = await scanEmail({
-      file: inputMethod === "upload" ? selectedFile : undefined,
-      text: inputMethod === "paste" ? pasteContent : undefined,
-      signedIn: false,
-    });
-    const nextCount = scanCount + 1;
-    sessionStorage.setItem(STORAGE_KEY, String(nextCount));
-    setScanCount(nextCount);
-    setResult(data);
-    setScannedAt(data.scannedAt);
-    setScanCompleted(true);
-  } catch (err) {
-    setScanError(friendlyError(err));
-  } finally {
-    setScanning(false);
-  }
-};
-```
-
-Change `result={null}` (line 80) to `result={result}`. Show `{scanError}` as a red message near the Scan button and add `disabled={scanning}` to it.
-
-### 3.8 `AnalyzeEmail.jsx` (signed-in scanner)
-
-Same changes with `signedIn: true`. Add the three states and the import, **replace lines 66-79**, change `result={null}` (line 84) to `result={result}`:
+Add the three states and the import, **replace lines 66-79**, and change `result={null}` (line 84) to `result={result}`:
 
 ```jsx
 const handleScan = async () => {
@@ -224,7 +175,6 @@ const handleScan = async () => {
     const data = await scanEmail({
       file: inputMethod === "upload" ? selectedFile : undefined,
       text: inputMethod === "paste" ? pasteContent : undefined,
-      signedIn: true,
     });
     setResult(data);
     setScannedAt(data.scannedAt);
@@ -237,7 +187,7 @@ const handleScan = async () => {
 };
 ```
 
-### 3.9 `AnalysisResults.jsx` (three text fixes)
+### 3.8 `AnalysisResults.jsx` (three text fixes)
 
 It already reads `riskLevel`, `threatScore`, `explanations`, `fileName`, `scannedAt`, `inferenceTimeMs`, `sender`, `subject`, `emailBody`, so no data wiring is needed. Fix wording that would now be false:
 
@@ -249,7 +199,7 @@ It already reads `riskLevel`, `threatScore`, `explanations`, `fileName`, `scanne
 
 Optional: under the "SHAP attribution & insights" heading show `{result?.shap?.note}`, so users see the values are log-odds, not percentages. Word items have `kind: "word"`; rule-based findings have `kind: "indicator"` and no number.
 
-### 3.10 `ThreatHistory.jsx` (+ the new `ScanDetail`)
+### 3.9 `ThreatHistory.jsx` (+ the new `ScanDetail`)
 
 Add imports `useEffect`, `useNavigate` (react-router-dom) and `fetchHistoryCsv, friendlyError, listHistory, saveBlob` from the client. **Replace lines 9-22** (`history` and `filteredHistory`). Filtering and search now happen on the server:
 
@@ -314,7 +264,7 @@ Then in the JSX: rename every `filteredHistory` to `items`; show `{total}` as th
 
 If `total > items.length`, show "Showing the newest 50 of {total}. Narrow the filters to see others." (add a "Load more" with `offset` later).
 
-### 3.11 `Dashboard.jsx`
+### 3.10 `Dashboard.jsx`
 
 Change line 9 to `import { useEffect, useState } from "react";` and add:
 
@@ -395,7 +345,7 @@ Then in the JSX:
 - "Recent Scan Activity": make "View All" `<Link to="/app/threat-history">`, and render `data.recent` rows: Timestamp `item.date`, Subject `item.subject`, Sender `item.email`, Threat Score `item.threatScore`, Status `item.classification`. Keep the empty-state row when `data?.recent` is empty.
 - Show `{error}` if set.
 
-### 3.12 `Settings.jsx`
+### 3.11 `Settings.jsx`
 
 Add the client imports `changePassword, friendlyError, getHealth, getPreferences, getProfile, preferencesToApi, preferencesToUi, updatePreferences, updateProfile`.
 
@@ -545,14 +495,14 @@ Replace the paragraph starting "These preferences are saved in this browser only
 8. Settings: change the name (sidebar updates); toggle Auto-save off, scan again: results say not saved and History still shows 1; toggle it back on.
 9. Change the password in one tab while signed in on another: the other tab is sent to `/login` on its next request.
 10. Log out: `/app/dashboard` redirects to `/login`.
-11. Open `/analyze` (signed in or not): scan works, the request has **no** `Authorization` header, History is unchanged.
+11. Open `/analyze`: you are redirected to `/login`. The home-page "Scan an Email" button also opens `/login`.
 12. Stop the backend: screens show "Cannot reach the BANTAI server", not a blank page.
 13. Five wrong passwords: the sixth attempt (even the right password) fails with the "temporarily locked" message. This needs the lockout patch from the Step 7b zip.
 
 ## 7. If something fails
 
 - **Every request is blocked in the console (CORS):** you opened `127.0.0.1` or another port. Use `http://localhost:5173`, or set `BANTAI_CORS_ORIGINS`.
-- **401 on a guest scan:** a header like `Bearer null` is being sent. Only `client.js` may set it.
+- **Scan access:** the `/api/v1/scans` endpoint requires sign-in; the legacy `/analyze` route redirects to `/login`.
 - **Calls go to the wrong URL:** `.env.development` was added without restarting `npm run dev`; the variable must start with `VITE_`.
 - **Profile picture rejected:** over about 300 KB, or SVG. Resize or convert.
 - **ESLint `react-hooks` complains about `setLoading(true)` in an effect:** harmless for the build; move that call into an event handler if you want it silent.
@@ -561,7 +511,7 @@ Replace the paragraph starting "These preferences are saved in this browser only
 
 1. **Token storage.** Tokens are stored in `localStorage` so users stay signed in across tabs and browser restarts. To migrate a token left in `sessionStorage` by an earlier version, reload the tab that currently has that token; that tab copies it to `localStorage`. Any XSS bug could read the token; avoid unsafe HTML/script injection and keep token lifetimes appropriately limited.
 2. **Auto-save defaults on for new accounts.** Existing saved preferences are retained, so users who previously turned it off remain opted out.
-3. **The guest "3 free scans" limit is cosmetic.** It lives in `sessionStorage`, so clearing storage resets it, and the backend has no limit. A real limit needs per-IP rate limiting on the server (not built).
+3. **Unauthenticated scans are not available.** `/analyze` is retained only as a redirect to `/login`; actual scans require an authenticated account.
 4. **History search by scan ID is not supported.** The search box placeholder mentions "scan ID", but the API searches only subject and sender. Change the placeholder, or ask for the backend change.
 5. **No password reset** until a way to verify the user exists (admin-issued code, or email).
 6. **The SHAP advanced-mode toggle has no effect yet.** It is saved on the server; nothing reads it. For example, hide the numeric `value` when it is off.

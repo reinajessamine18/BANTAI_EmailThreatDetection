@@ -41,7 +41,7 @@ export default function Hero() {
           <div className="mt-8">
 
             <Link
-              to="/analyze"
+              to="/login"
               className="inline-flex items-center gap-3 rounded-full bg-lime-400 px-7 py-4 text-sm font-bold text-black transition-all hover:bg-lime-300 hover:shadow-[0_0_30px_rgba(190,255,0,0.35)]"
             >
               Scan an Email

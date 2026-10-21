@@ -2,7 +2,7 @@
 //
 // Rules this module enforces for every screen:
 //  * The bearer token lives in ONE place (below). Passwords are never stored in the browser.
-//  * The Authorization header is sent only when a token exists AND the call is not a guest call.
+//  * The Authorization header is sent only when a token exists AND the call is not public.
 //    (Sending "Bearer null" makes the backend answer 401, so we never do.)
 //  * Every failure becomes an ApiError {status, code, message}; friendlyError() turns it into
 //    text safe to show a user.
@@ -80,8 +80,6 @@ const FRIENDLY = {
   invalid_base64: "The file could not be read. Please try another .eml file.",
   ml_unavailable: "The analysis service is unavailable right now. Please try again shortly.",
   storage_failed: "The scan could not be recorded, so no result was shown. Please try again.",
-  guest_scan_limit_reached: "The free guest scan limit has been reached for this IP address. Log in to continue scanning.",
-  guest_quota_unavailable: "Guest scanning is temporarily unavailable. Please try again shortly.",
   configuration_error: "The server is misconfigured. Please contact an administrator.",
   password_reset_unavailable: "Password recovery is not configured. Please contact an administrator.",
   password_reset_rate_limited: "Too many password reset requests. Try again later.",
@@ -181,9 +179,8 @@ export async function fileToBase64(file) {
   return btoa(binary);
 }
 
-// Provide EITHER `file` (an .eml) OR `text` (pasted). Pass signedIn:false from the GUEST page so a
-// stored token is never attached (guest scans must stay anonymous).
-export async function scanEmail({ file, text, signedIn }) {
+// Provide EITHER `file` (an .eml) OR `text` (pasted). Scanning always requires an account.
+export async function scanEmail({ file, text }) {
   let body;
   if (file) {
     if (file.size > MAX_EML_BYTES) throw new ApiError(0, "file_too_large", FRIENDLY.file_too_large);
@@ -191,7 +188,7 @@ export async function scanEmail({ file, text, signedIn }) {
   } else {
     body = { inputMethod: "raw_text", encoding: "text", content: text ?? "" };
   }
-  return json("/scans", { method: "POST", body, auth: !!signedIn });
+  return json("/scans", { method: "POST", body });
 }
 
 // ------------------------------------------------------------------ history / dashboard

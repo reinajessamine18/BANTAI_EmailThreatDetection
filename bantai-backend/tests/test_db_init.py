@@ -141,20 +141,91 @@ def test_revision_two_database_migrates_without_losing_users(tmp_path):
 
     result = init_db(db, SQL_DIR, None)
     assert not result.created
-    assert _one(db, "PRAGMA user_version")[0] == 5
+    assert _one(db, "PRAGMA user_version")[0] == 10
     assert _one(db, "SELECT email FROM users WHERE user_id = 1")[0] == "a@example.com"
     assert _one(db, "SELECT auto_save_scan_logs FROM user_settings WHERE user_id = 1")[0] == 1
     auto_save_column = next(
         row for row in _all(db, "PRAGMA table_info(user_settings)")
         if row[1] == "auto_save_scan_logs"
     )
-    assert auto_save_column[4] == "0"
+    assert auto_save_column[4] == "1"
     names = {row[0] for row in _all(db, "SELECT name FROM sqlite_master WHERE type='table'")}
     assert {
         "password_reset_tokens",
         "password_reset_requests",
         "guest_scan_reservations",
     } <= names
+
+
+def test_google_sso_version_nine_database_migrates_without_losing_records(tmp_path):
+    db = tmp_path / "google-v9.db"
+    init_db(db, SQL_DIR, None)
+    conn = _connect(db)
+    conn.execute(
+        "INSERT INTO users (full_name, email, auth_provider, sso_subject_id, sso_idp_entity_id)"
+        " VALUES ('Google User', 'google@example.com', 'google', 'subject-1', 'google')"
+    )
+    conn.execute(
+        "INSERT INTO user_settings (user_id, auto_save_scan_logs) VALUES (1, 0)"
+    )
+    conn.execute(
+        "INSERT INTO user_sessions (user_id, token_hash, expires_at)"
+        " VALUES (1, 'token-hash', '2030-01-01T00:00:00Z')"
+    )
+    scan_id = _new_scan(conn)
+    conn.execute("UPDATE scans SET user_id = 1 WHERE scan_id = ?", (scan_id,))
+
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript("""
+        CREATE TABLE users_legacy (
+            user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            auth_provider TEXT NOT NULL DEFAULT 'google' CHECK (auth_provider = 'google'),
+            sso_subject_id TEXT NOT NULL,
+            sso_idp_entity_id TEXT NOT NULL DEFAULT 'google',
+            role TEXT NOT NULL DEFAULT 'analyst',
+            job_title TEXT,
+            tier_label TEXT,
+            profile_picture TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            last_login_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        INSERT INTO users_legacy (
+            user_id, full_name, email, auth_provider, sso_subject_id, sso_idp_entity_id,
+            role, job_title, tier_label, profile_picture, is_active, last_login_at,
+            created_at, updated_at
+        )
+        SELECT
+            user_id, full_name, email, auth_provider, sso_subject_id, sso_idp_entity_id,
+            role, job_title, tier_label, profile_picture, is_active, last_login_at,
+            created_at, updated_at
+        FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_legacy RENAME TO users;
+        CREATE UNIQUE INDEX ux_users_sso ON users (sso_idp_entity_id, sso_subject_id);
+        DROP TABLE password_reset_requests;
+        DROP TABLE password_reset_tokens;
+        DROP TABLE guest_scan_reservations;
+        PRAGMA user_version = 9;
+    """)
+    conn.commit()
+    conn.close()
+
+    result = init_db(db, SQL_DIR, None)
+
+    assert not result.created and result.schema_version == 10
+    assert _one(db, "PRAGMA user_version")[0] == 10
+    assert _one(db, "SELECT email, auth_provider, password_hash FROM users WHERE user_id = 1") == (
+        "google@example.com", "google", None
+    )
+    assert _one(db, "SELECT auto_save_scan_logs FROM user_settings WHERE user_id = 1")[0] == 0
+    assert _one(db, "SELECT token_hash FROM user_sessions WHERE user_id = 1")[0] == "token-hash"
+    assert _one(db, "SELECT user_id FROM scans WHERE scan_id = ?", (scan_id,))[0] == 1
+    assert _all(db, "PRAGMA foreign_key_check") == []
 
 
 def test_database_with_old_schema_version_is_rejected_with_clear_message(tmp_path):

@@ -46,11 +46,11 @@ test("a stored token is sent as a Bearer header", async () => {
   assert.equal(lastHeaders().Authorization, "Bearer tok123");
 });
 
-test("a guest scan NEVER attaches the token, even when one is stored", async () => {
+test("scan calls use the stored account token", async () => {
   reset(); api.setToken("tok123");
-  await api.scanEmail({ text: "hello", signedIn: false });
-  assert.equal(lastHeaders().Authorization, undefined);
-  await api.scanEmail({ text: "hello", signedIn: true });
+  await api.scanEmail({ text: "hello" });
+  assert.ok(lastHeaders().Authorization);
+  await api.scanEmail({ text: "hello" });
   assert.equal(lastHeaders().Authorization, "Bearer tok123");
 });
 
@@ -140,7 +140,6 @@ test("error shapes: detail object, validation list, network failure, non-JSON bo
 
 test("friendlyError maps known codes and never leaks unknown internals", () => {
   assert.match(api.friendlyError(new api.ApiError(503, "ml_unavailable", "x")), /unavailable/);
-  assert.match(api.friendlyError(new api.ApiError(429, "guest_scan_limit_reached", "x")), /free guest scan limit/);
   assert.match(api.friendlyError(new api.ApiError(401, "invalid_token", "x")), /sign in again/);
   assert.equal(api.friendlyError(new api.ApiError(403, "invalid_current_password", "Server text.")), "Server text.");
   assert.match(api.friendlyError(new TypeError("boom")), /Something went wrong/);
@@ -151,7 +150,7 @@ test("an .eml file is sent as base64 and decodes back to the exact original byte
   reset();
   const original = new Uint8Array([70, 114, 111, 109, 58, 32, 0xe9, 0x00, 0xff, 13, 10, 13, 10, 104, 105]);  // includes non-UTF-8 bytes
   const file = new File([original], "C:\\mail\\test.eml", { type: "message/rfc822" });
-  await api.scanEmail({ file, signedIn: false });
+  await api.scanEmail({ file });
   const body = JSON.parse(calls[0].body);
   assert.deepEqual(Object.keys(body).sort(), ["content", "encoding", "fileName", "inputMethod"]);
   assert.equal(body.inputMethod, "eml_upload"); assert.equal(body.encoding, "base64"); assert.equal(body.fileName, "C:\\mail\\test.eml");
@@ -160,7 +159,7 @@ test("an .eml file is sent as base64 and decodes back to the exact original byte
 
 test("pasted text is sent as raw_text", async () => {
   reset();
-  await api.scanEmail({ text: "Subject: Hi\n\nHello", signedIn: true });
+  await api.scanEmail({ text: "Subject: Hi\n\nHello" });
   assert.deepEqual(JSON.parse(calls[0].body), { inputMethod: "raw_text", encoding: "text", content: "Subject: Hi\n\nHello" });
 });
 

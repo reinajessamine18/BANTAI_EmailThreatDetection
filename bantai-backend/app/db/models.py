@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models mirroring bantai-database/schema.sql (schema version 5).
+"""SQLAlchemy ORM models mirroring bantai-database/schema.sql (schema version 10).
 
 IMPORTANT: the SQL files are the source of truth. These classes only *describe*
 existing tables for querying. Never call `Base.metadata.create_all()`: it would

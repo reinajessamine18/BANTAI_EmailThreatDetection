@@ -59,9 +59,13 @@ function SignUp() {
             {/* Header */}
             <div className="mb-8 text-center">
               <div className="mb-5">
-                <span className="text-3xl font-black italic tracking-tight text-white">
+                <Link
+                  to="/"
+                  aria-label="BANTAI home"
+                  className="text-3xl font-black italic tracking-tight text-white"
+                >
                   BANTAI<span className="text-lime-400">.</span>
-                </span>
+                </Link>
               </div>
 
               <h1 className="text-2xl font-bold tracking-tight text-white">

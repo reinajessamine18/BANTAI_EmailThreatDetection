@@ -4,6 +4,7 @@ Needs FastAPI + SQLAlchemy. Uses a fake ML model (same helper as the scan tests)
 """
 
 import sqlite3
+from contextlib import contextmanager
 
 import pytest
 
@@ -11,11 +12,17 @@ pytest.importorskip("sqlalchemy")
 pytest.importorskip("fastapi")
 
 from app.core.config import get_settings  # noqa: E402
-from tests.test_scans_api import make_client  # noqa: E402
+from tests.test_scans_api import make_client as make_scan_client  # noqa: E402
 
 API = "/api/v1"
 PASSWORD = "Correct horse battery 42!"
 CONTENT = "Subject: Verify now\n\nPlease verify your password at http://203.0.113.9/x immediately."
+
+
+@contextmanager
+def make_client(monkeypatch):
+    with make_scan_client(monkeypatch, authenticated=False) as client:
+        yield client
 
 
 def register(client, email="a@example.com", password=PASSWORD):
@@ -98,13 +105,13 @@ def test_duplicate_email_is_409(monkeypatch):
     assert db_rows("SELECT COUNT(*) FROM users") == [(1,)]
 
 
-def test_guests_still_scan_but_cannot_see_history(monkeypatch):
+def test_guests_cannot_scan_or_see_history(monkeypatch):
     with make_client(monkeypatch) as client:
         guest = client.post(f"{API}/scans", json={"inputMethod": "raw_text", "content": CONTENT})
-        assert guest.status_code == 200
+        assert guest.status_code == 401
         assert client.get(f"{API}/scans").status_code == 401
         assert client.get(f"{API}/auth/me").status_code == 401
-    assert db_rows("SELECT user_id, subject FROM scans") == [(None, None)]
+    assert db_rows("SELECT COUNT(*) FROM scans") == [(0,)]
 
 
 @pytest.mark.parametrize("header", ["Bearer " + "a" * 43, "Bearer null", "Basic abc", "Bearer"])

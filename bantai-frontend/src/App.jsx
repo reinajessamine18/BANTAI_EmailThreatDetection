@@ -17,7 +17,6 @@ import Login from "./components/Login";
 import SignUp from "./components/SignUp";
 import ForgotPassword from "./components/ForgotPassword";
 import ResetPassword from "./components/ResetPassword";
-import GuestAnalyzeEmail from "./components/GuestAnalyzeEmail";
 
 import DashboardLayout from "./components/DashboardLayout";
 import AnalyzeEmail from "./components/AnalyzeEmail";
@@ -62,8 +61,8 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Guest Email Scanner */}
-        <Route path="/analyze" element={<GuestAnalyzeEmail />} />
+        {/* Keep legacy scan links, but require sign-in before scanning. */}
+        <Route path="/analyze" element={<Navigate to="/login" replace />} />
 
         {/* Authenticated Application "Newly Add" */}
         <Route element={<RequireAuth />}> 

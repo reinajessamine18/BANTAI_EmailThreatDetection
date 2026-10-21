@@ -90,7 +90,6 @@ function AnalyzeEmail() {
       const data = await scanEmail({
         file: inputMethod === "upload" ? selectedFile : undefined,
         text: inputMethod === "paste" ? pasteContent : undefined,
-        signedIn: true,
       });
       setResult(data);
       setScannedAt(data.scannedAt || new Date().toISOString());
@@ -108,7 +107,6 @@ function AnalyzeEmail() {
         result={result}
         fileName={inputMethod === "paste" ? "Pasted email" : selectedFile?.name}
         scannedAt={scannedAt}
-        isGuest={false}
         onBack={() => setScanCompleted(false)}
       />
     );

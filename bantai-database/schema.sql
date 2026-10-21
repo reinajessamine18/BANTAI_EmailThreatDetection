@@ -20,6 +20,7 @@
 -- remain unchanged during migration.
 -- REVISION 5 enables Auto-save Scan Logs by default for all accounts.
 -- REVISION 5 enforces the guest scan allowance on the server.
+-- REVISION 10 preserves legacy Google SSO identities alongside local accounts.
 -- =====================================================================
 PRAGMA foreign_keys = ON;
 
@@ -32,7 +33,7 @@ CREATE TABLE users (
     email                 TEXT    NOT NULL UNIQUE COLLATE NOCASE,
     password_hash         TEXT,                                   -- bcrypt/argon2 hash; NULL for SSO-only users
     auth_provider         TEXT    NOT NULL DEFAULT 'local'
-                          CHECK (auth_provider IN ('local','saml')),
+                          CHECK (auth_provider IN ('local','saml','google')),
     sso_subject_id        TEXT,                                   -- SAML NameID from the IdP
     sso_idp_entity_id     TEXT,                                   -- which IdP issued it
     role                  TEXT    NOT NULL DEFAULT 'analyst'
@@ -47,7 +48,7 @@ CREATE TABLE users (
     created_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     updated_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     CHECK (auth_provider <> 'local' OR password_hash IS NOT NULL),
-    CHECK (auth_provider <> 'saml'  OR sso_subject_id IS NOT NULL)
+    CHECK (auth_provider NOT IN ('saml','google') OR sso_subject_id IS NOT NULL)
 );
 CREATE UNIQUE INDEX ux_users_sso
     ON users (sso_idp_entity_id, sso_subject_id) WHERE sso_subject_id IS NOT NULL;
@@ -360,4 +361,4 @@ CREATE INDEX ix_password_reset_requests_ip_time
     ON password_reset_requests (client_ip, created_at);
 
 -- Schema version. Bump this whenever a table/column/CHECK changes.
-PRAGMA user_version = 6;
+PRAGMA user_version = 10;

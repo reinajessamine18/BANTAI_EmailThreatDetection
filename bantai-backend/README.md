@@ -27,7 +27,7 @@ uvicorn app.main:app --reload --port 8000
 
 ## Scan API
 
-`POST /api/v1/scans` (guest access; signed-in users may also scan)
+`POST /api/v1/scans` (sign-in required)
 
 ```json
 { "inputMethod": "eml_upload" | "raw_text",
@@ -41,19 +41,14 @@ Success (200): `riskLevel` (`safe`/`suspicious`/`phishing`), `riskTier`, `threat
 `value: null`), `links[]`, `sender`, `subject`, `emailBody`, `fileName`, `scannedAt`,
 `inferenceTimeMs`, `modelVersion`, `saved`, `scanId`/`scanCode`.
 
-Errors: `{"detail": {"code": "...", "message": "..."}}` with 413 (`too_large`,
-`body_too_long`), 422 (`unparseable`, `invalid_base64`, `invalid_encoding`, ...),
-429 (`guest_scan_limit_reached`), 500 (`storage_failed`, `configuration_error`),
-503 (`ml_unavailable`, `guest_quota_unavailable`).
+Errors: `{"detail": {"code": "...", "message": "..."}}` with 401 (`not_authenticated`,
+`invalid_token`), 413 (`too_large`, `body_too_long`), 422 (`unparseable`,
+`invalid_base64`, `invalid_encoding`, ...), 500 (`storage_failed`,
+`configuration_error`), 503 (`ml_unavailable`).
 
-Guest scans are recorded without subject or full sender address. Signed-in users with
-"Auto-save Scan Logs" off get an audit entry only. New accounts default to auto-save off;
-existing saved preferences are preserved through schema migration. If the record cannot be written, no
-result is returned.
-
-Guest requests are limited to three successful scans per client IP in a rolling 24-hour
-window; failed scans release their reservation. The server enforces the limit, so clearing
-browser storage does not reset it. Signed-in scans are not subject to the guest quota.
+Signed-in users with "Auto-save Scan Logs" off get an audit entry only. New accounts
+default to auto-save on; existing saved preferences are preserved through schema migration.
+If the record cannot be written, no result is returned.
 
 ## History, dashboard and feedback (sign-in required)
 
@@ -79,9 +74,13 @@ python -m app.db.init_db --with-sample
 ```
 
 Supported schema upgrades run from `bantai-database/migrations/` when the server starts.
-Keep a backup before deploying schema changes. The server never deletes an existing
-database to upgrade it; it refuses to start if a migration path is missing or the database
-is newer than the application.
+The version-9 Google SSO database is upgraded to version 10 while preserving existing
+users, sessions, scans, and audit records. Existing Google SSO accounts have no password
+hashes; this application does not implement Google sign-in, so those accounts cannot use
+password sign-in until an account recovery/setup flow is available. Back up the database
+before deploying schema changes. The server never deletes an existing database to upgrade
+it; it refuses to start if a migration path is missing or the database is newer than the
+application.
 
 ## Password recovery
 

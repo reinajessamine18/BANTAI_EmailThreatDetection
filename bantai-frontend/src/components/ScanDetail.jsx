@@ -43,7 +43,6 @@ function ScanDetail() {
       result={result}
       fileName={result.fileName}
       scannedAt={result.scannedAt}
-      isGuest={false}
       onBack={() => navigate("/app/threat-history")}
     />
   );

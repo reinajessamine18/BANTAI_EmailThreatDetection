@@ -1,9 +1,10 @@
 # BANTAI Chrome extension
 
-This Manifest V3 extension adds Gmail scanning as another interface to the existing
-BANTAI application. It uses the existing `/api/v1/auth/*` and `/api/v1/scans`
-endpoints and does not replace the web application or its `.eml` and pasted-text
-submission methods.
+This Manifest V3 extension provides the Gmail scanning workflow for BANTAI. It
+uses the existing `/api/v1/auth/*` and `/api/v1/scans` endpoints. Scanning from
+the web application also requires signing in; its legacy `/analyze` URL sends
+users to the login screen, while authenticated users can still use the web
+application's `.eml` and pasted-text submission methods.
 
 ## Load the extension for local development
 
