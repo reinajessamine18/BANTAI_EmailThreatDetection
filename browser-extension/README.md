@@ -10,6 +10,7 @@ submission methods.
 1. Start the BANTAI backend from `bantai-backend`:
 
    ```powershell
+   cd bantai-backend
    .\.venv\Scripts\Activate.ps1
    uvicorn app.main:app --reload --port 8000
    ```
