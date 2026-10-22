@@ -1,11 +1,16 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 
 import backgroundImage from "../assets/bgimg-login.png";
-import shieldIcon from "../assets/shield-icon.png";
 import lockIcon from "../assets/lock-icon.png";
-import { friendlyError, login } from "../api/client";
+import {
+  ApiError,
+  exchangeGoogleTicket,
+  friendlyError,
+  login,
+  startGoogleLogin,
+} from "../api/client";
 
 function Login() {
   const [showPassword, setShowPassword] = useState(false);
@@ -13,15 +18,34 @@ function Login() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
+  const [searchParams] = useSearchParams();
+  const handledTicket = useRef("");
   const navigate = useNavigate();
+  const oauthTicket = searchParams.get("oauth_ticket");
+  const oauthError = searchParams.get("error");
+  const visibleError = error || (oauthError ? friendlyError(new ApiError(400, oauthError, "")) : "");
+
+  useEffect(() => {
+    if (oauthError) return;
+    if (!oauthTicket || handledTicket.current === oauthTicket) return;
+
+    handledTicket.current = oauthTicket;
+    setBusy(true);
+    exchangeGoogleTicket(oauthTicket)
+      .then(() => navigate("/app/dashboard", { replace: true }))
+      .catch((err) => {
+        setError(friendlyError(err));
+        navigate("/login", { replace: true });
+      })
+      .finally(() => setBusy(false));
+  }, [navigate, oauthError, oauthTicket]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
     setBusy(true);
     try {
-      await login({ email: email.trim(), password });
+      await login({ identifier: email.trim(), password });
       navigate("/app/dashboard");
     } catch (err) {
       setError(friendlyError(err));
@@ -75,19 +99,19 @@ function Login() {
                   htmlFor="username"
                   className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-400"
                 >
-                  Email
+                  Username or Email
                 </label>
 
                 <input
                   id="username"
                   name="username"
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(event) => {
                     setEmail(event.target.value);
                     setError("");
                   }}
-                  placeholder="name@company.com"
+                  placeholder="Username or name@company.com"
                   autoComplete="username"
                   required
                   disabled={busy}
@@ -153,10 +177,10 @@ function Login() {
               </div>
 
               {/* Error */}
-              {error && (
+              {visibleError && (
                 <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
                   <p className="text-xs leading-5 text-red-400">
-                    {error}
+                    {visibleError}
                   </p>
                 </div>
               )}
@@ -181,21 +205,14 @@ function Login() {
                 <div className="h-px flex-1 bg-zinc-800" />
               </div>
 
-              {/* SSO */}
               <button
                 type="button"
+                onClick={startGoogleLogin}
                 disabled={busy}
                 className="flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-700 bg-zinc-900/70 px-6 py-3.5 text-sm font-semibold text-white transition hover:border-zinc-500 hover:bg-zinc-800 disabled:opacity-50"
               >
-                <img
-                  src={shieldIcon}
-                  alt=""
-                  className="h-5 w-5 object-contain"
-                />
-
-                <span>
-                  Sign in with SSO (SAML)
-                </span>
+                <span aria-hidden="true" className="text-base font-bold text-white">G</span>
+                <span>Continue with Google</span>
               </button>
             </form>
 

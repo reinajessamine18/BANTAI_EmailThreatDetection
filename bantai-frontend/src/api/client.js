@@ -84,6 +84,20 @@ const FRIENDLY = {
   password_reset_unavailable: "Password recovery is not configured. Please contact an administrator.",
   password_reset_rate_limited: "Too many password reset requests. Try again later.",
   invalid_reset_token: "This password reset link is invalid or has expired. Request a new link.",
+  invalid_reset_authorization: "This password reset step expired. Request a new code.",
+  invalid_otp: "That code is incorrect or expired. Check it and try again.",
+  email_delivery_unavailable: "Email verification is not configured on the server.",
+  email_delivery_failed: "The code could not be delivered. Please try again later.",
+  verification_rate_limited: "A code was recently requested. Wait before requesting another.",
+  email_not_verified: "Verify your email address before signing in.",
+  username_already_registered: "That username is already in use.",
+  google_login_unavailable: "Google sign-in is not configured on the server.",
+  google_account_link_required: "Sign in to the existing account before linking Google.",
+  invalid_oauth_ticket: "Google sign-in expired. Please try again.",
+  google_state_invalid: "Google sign-in could not be verified. Please try again.",
+  google_sign_in_failed: "Google sign-in could not be completed. Please try again.",
+  google_sign_in_cancelled: "Google sign-in was cancelled.",
+  password_setup_unavailable: "Password setup is not available for this account.",
 };
 export function friendlyError(error) {
   if (error instanceof ApiError) return FRIENDLY[error.code] || error.message;
@@ -132,18 +146,51 @@ async function json(path, options) {
 }
 
 // ------------------------------------------------------------------ auth
-export async function register({ fullName, email, password }) {
-  const data = await json("/auth/register", {
-    method: "POST", auth: false, body: { full_name: fullName, email, password },
+export async function register({ username, fullName, email, password, confirmPassword }) {
+  return json("/auth/register", {
+    method: "POST",
+    auth: false,
+    body: {
+      username,
+      full_name: fullName,
+      email,
+      password,
+      confirm_password: confirmPassword,
+    },
+  });
+}
+
+export async function verifyRegistration({ email, code }) {
+  const data = await json("/auth/register/verify", {
+    method: "POST", auth: false, body: { email, code },
   });
   setToken(data.accessToken);
   return data.user;
 }
 
-export async function login({ email, password }) {
-  const data = await json("/auth/login", { method: "POST", auth: false, body: { email, password } });
+export const resendRegistrationCode = (email) =>
+  json("/auth/register/resend", { method: "POST", auth: false, body: { email } });
+
+export async function login({ identifier, email, password }) {
+  const data = await json("/auth/login", {
+    method: "POST",
+    auth: false,
+    body: { identifier: identifier ?? email, password },
+  });
   setToken(data.accessToken);
   return data.user;
+}
+
+export async function exchangeGoogleTicket(ticket) {
+  const data = await json("/auth/google/exchange", {
+    method: "POST", auth: false, body: { ticket },
+  });
+  setToken(data.accessToken);
+  return data.user;
+}
+
+export function startGoogleLogin() {
+  globalThis.location.assign(`${BASE_URL}/auth/google/start`);
 }
 
 export const requestPasswordReset = (email) =>
@@ -153,11 +200,38 @@ export const requestPasswordReset = (email) =>
     body: { email },
   });
 
-export const resetPassword = ({ token, newPassword }) =>
+export const resendPasswordResetCode = (email) =>
+  json("/auth/password-reset/resend", {
+    method: "POST",
+    auth: false,
+    body: { email },
+  });
+
+export const verifyPasswordResetCode = ({ email, code }) =>
+  json("/auth/password-reset/verify", {
+    method: "POST",
+    auth: false,
+    body: { email, code },
+  });
+
+export const resetPassword = ({ token, newPassword, confirmPassword }) =>
   json("/auth/password-reset/confirm", {
     method: "POST",
     auth: false,
-    body: { token, new_password: newPassword },
+    body: {
+      token,
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    },
+  });
+
+export const requestGooglePasswordSetup = () =>
+  json("/auth/google-password-setup/request", { method: "POST" });
+
+export const confirmGooglePasswordSetup = ({ username, code, password, confirmPassword }) =>
+  json("/auth/google-password-setup/confirm", {
+    method: "POST",
+    body: { username, code, password, confirm_password: confirmPassword },
   });
 
 export async function logout() {

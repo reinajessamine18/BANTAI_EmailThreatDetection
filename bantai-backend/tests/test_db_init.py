@@ -20,7 +20,8 @@ EXPECTED_TABLES = {
     "feature_definitions", "scans", "scan_features", "shap_results", "explanations",
     "extracted_urls", "scan_feedback", "audit_logs",
     "scan_token_contributions", "token_feature_map", "password_reset_tokens",
-    "password_reset_requests", "guest_scan_reservations",
+    "password_reset_requests", "guest_scan_reservations", "email_otp_challenges",
+    "oauth_states", "oauth_login_tickets",
 }
 
 
@@ -135,13 +136,19 @@ def test_revision_two_database_migrates_without_losing_users(tmp_path):
     conn.execute("DROP TABLE password_reset_requests")
     conn.execute("DROP TABLE password_reset_tokens")
     conn.execute("DROP TABLE guest_scan_reservations")
+    conn.execute("DROP TABLE oauth_login_tickets")
+    conn.execute("DROP TABLE oauth_states")
+    conn.execute("DROP TABLE email_otp_challenges")
+    conn.execute("DROP INDEX ux_users_username")
+    conn.execute("ALTER TABLE users DROP COLUMN email_verified_at")
+    conn.execute("ALTER TABLE users DROP COLUMN username")
     conn.execute("PRAGMA user_version = 2")
     conn.commit()
     conn.close()
 
     result = init_db(db, SQL_DIR, None)
     assert not result.created
-    assert _one(db, "PRAGMA user_version")[0] == 10
+    assert _one(db, "PRAGMA user_version")[0] == 11
     assert _one(db, "SELECT email FROM users WHERE user_id = 1")[0] == "a@example.com"
     assert _one(db, "SELECT auto_save_scan_logs FROM user_settings WHERE user_id = 1")[0] == 1
     auto_save_column = next(
@@ -178,6 +185,10 @@ def test_google_sso_version_nine_database_migrates_without_losing_records(tmp_pa
     conn.commit()
     conn.execute("PRAGMA foreign_keys = OFF")
     conn.executescript("""
+        DROP TABLE oauth_login_tickets;
+        DROP TABLE oauth_states;
+        DROP TABLE email_otp_challenges;
+        DROP INDEX ux_users_username;
         CREATE TABLE users_legacy (
             user_id INTEGER PRIMARY KEY AUTOINCREMENT,
             full_name TEXT NOT NULL,
@@ -217,8 +228,8 @@ def test_google_sso_version_nine_database_migrates_without_losing_records(tmp_pa
 
     result = init_db(db, SQL_DIR, None)
 
-    assert not result.created and result.schema_version == 10
-    assert _one(db, "PRAGMA user_version")[0] == 10
+    assert not result.created and result.schema_version == 11
+    assert _one(db, "PRAGMA user_version")[0] == 11
     assert _one(db, "SELECT email, auth_provider, password_hash FROM users WHERE user_id = 1") == (
         "google@example.com", "google", None
     )

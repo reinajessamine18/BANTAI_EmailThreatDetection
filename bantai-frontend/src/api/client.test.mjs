@@ -55,14 +55,45 @@ test("scan calls use the stored account token", async () => {
 });
 
 // ---- auth flows -------------------------------------------------------------------------------
-test("register sends snake_case full_name, stores the token, returns the user", async () => {
+test("registration sends username and password confirmation without creating a session", async () => {
   reset();
-  reply = () => ({ status: 201, body: { accessToken: "abc", user: { fullName: "Ana" } } });
-  const user = await api.register({ fullName: "Ana Test", email: "a@x.example", password: "longenough1!" });
-  assert.deepEqual(JSON.parse(calls[0].body), { full_name: "Ana Test", email: "a@x.example", password: "longenough1!" });
-  assert.equal(api.getToken(), "abc");
-  assert.equal(user.fullName, "Ana");
+  reply = () => ({ status: 202, body: { message: "pending verification" } });
+  await api.register({
+    username: "ana-test",
+    fullName: "Ana Test",
+    email: "a@x.example",
+    password: "longenough1!",
+    confirmPassword: "longenough1!",
+  });
+  assert.deepEqual(JSON.parse(calls[0].body), {
+    username: "ana-test",
+    full_name: "Ana Test",
+    email: "a@x.example",
+    password: "longenough1!",
+    confirm_password: "longenough1!",
+  });
+  assert.equal(api.getToken(), null);
   assert.match(calls[0].url, /\/auth\/register$/);
+});
+
+test("registration verification stores the returned session token", async () => {
+  reset();
+  reply = () => ({ status: 200, body: { accessToken: "verified-token", user: { email: "a@x.example" } } });
+  const user = await api.verifyRegistration({ email: "a@x.example", code: "123456" });
+  assert.deepEqual(JSON.parse(calls[0].body), { email: "a@x.example", code: "123456" });
+  assert.equal(calls[0].url, "http://localhost:8000/api/v1/auth/register/verify");
+  assert.equal(api.getToken(), "verified-token");
+  assert.equal(user.email, "a@x.example");
+});
+
+test("Google login ticket exchange stores a session token", async () => {
+  reset();
+  reply = () => ({ status: 200, body: { accessToken: "google-session", user: { authProvider: "google" } } });
+  const user = await api.exchangeGoogleTicket("ticket-value");
+  assert.equal(calls[0].url, "http://localhost:8000/api/v1/auth/google/exchange");
+  assert.deepEqual(JSON.parse(calls[0].body), { ticket: "ticket-value" });
+  assert.equal(api.getToken(), "google-session");
+  assert.equal(user.authProvider, "google");
 });
 
 test("login stores the token; the password is never written to browser storage", async () => {
@@ -75,7 +106,7 @@ test("login stores the token; the password is never written to browser storage",
   assert.ok(!everything.includes("SuperSecret"));
 });
 
-test("password recovery requests and applies a reset token without auth", async () => {
+test("password recovery requests, verifies a code, and confirms a single-use authorization", async () => {
   reset();
   await api.requestPasswordReset("a@example.com");
   assert.equal(calls[0].url, "http://localhost:8000/api/v1/auth/password-reset/request");
@@ -83,12 +114,23 @@ test("password recovery requests and applies a reset token without auth", async 
   assert.equal(lastHeaders().Authorization, undefined);
   assert.deepEqual(JSON.parse(calls[0].body), { email: "a@example.com" });
 
-  await api.resetPassword({ token: "opaque-reset-token", newPassword: "new-password-123" });
-  assert.equal(calls[1].url, "http://localhost:8000/api/v1/auth/password-reset/confirm");
-  assert.equal(calls[1].method, "POST");
-  assert.deepEqual(JSON.parse(calls[1].body), {
-    token: "opaque-reset-token",
+  reply = () => ({ status: 200, body: { resetAuthorization: "one-time-authorization" } });
+  const result = await api.verifyPasswordResetCode({ email: "a@example.com", code: "123456" });
+  assert.equal(result.resetAuthorization, "one-time-authorization");
+  assert.equal(calls[1].url, "http://localhost:8000/api/v1/auth/password-reset/verify");
+  assert.deepEqual(JSON.parse(calls[1].body), { email: "a@example.com", code: "123456" });
+
+  await api.resetPassword({
+    token: "one-time-authorization",
+    newPassword: "new-password-123",
+    confirmPassword: "new-password-123",
+  });
+  assert.equal(calls[2].url, "http://localhost:8000/api/v1/auth/password-reset/confirm");
+  assert.equal(calls[2].method, "POST");
+  assert.deepEqual(JSON.parse(calls[2].body), {
+    token: "one-time-authorization",
     new_password: "new-password-123",
+    confirm_password: "new-password-123",
   });
 });
 

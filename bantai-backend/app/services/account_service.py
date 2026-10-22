@@ -40,6 +40,9 @@ def _profile(row: Mapping[str, Any]) -> Dict[str, Any]:
         "jobTitle": row["job_title"],
         "tierLabel": row["tier_label"],
         "profilePicture": row["profile_picture"],
+        "username": row["username"],
+        "authProvider": row["auth_provider"],
+        "hasPassword": row["password_hash"] is not None,
     }
 
 

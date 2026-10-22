@@ -52,7 +52,8 @@ def test_get_profile_and_missing_user(tmp_path):
     _, run = world(tmp_path)
     p = svc.get_profile(run, 1)
     assert (p["fullName"], p["email"], p["jobTitle"], p["role"]) == ("Ana Test", "ana@example.com", "Analyst", "analyst")
-    assert "password" not in str(p).lower() and svc.get_profile(run, 99) is None
+    assert "password_hash" not in p and p["hasPassword"] is True
+    assert svc.get_profile(run, 99) is None
 
 
 def test_update_name_job_title_and_picture_then_clear(tmp_path):

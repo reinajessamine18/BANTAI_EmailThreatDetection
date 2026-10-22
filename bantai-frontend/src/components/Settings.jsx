@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import {
   changePassword,
+  confirmGooglePasswordSetup,
   friendlyError,
   getHealth,
   getPreferences,
   getProfile,
   preferencesToApi,
   preferencesToUi,
+  requestGooglePasswordSetup,
   updatePreferences,
   updateProfile,
 } from "../api/client";
@@ -30,6 +32,14 @@ function Settings() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [setupUsername, setSetupUsername] = useState("");
+  const [setupCode, setSetupCode] = useState("");
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
+  const [setupCodeRequested, setSetupCodeRequested] = useState(false);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupMessage, setSetupMessage] = useState("");
+  const [setupError, setSetupError] = useState("");
 
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -52,6 +62,12 @@ function Settings() {
     (email.trim().toLowerCase() !== (user?.email || "").toLowerCase() &&
       Boolean(emailPassword)) ||
     Boolean(currentPassword || newPassword || confirmPassword) ||
+    Boolean(
+      (setupUsername && setupUsername !== (user?.username || "")) ||
+        setupCode ||
+        setupPassword ||
+        setupConfirmPassword
+    ) ||
     pendingPreferenceSaves > 0;
 
   useEffect(() => {
@@ -77,6 +93,7 @@ function Settings() {
         setName(profile.fullName || "");
         setEmail(profile.email || "");
         setProfilePicture(profile.profilePicture || "");
+        setSetupUsername(profile.username || "");
         setPreferences(preferencesToUi(prefs));
       })
       .catch((err) => {
@@ -198,6 +215,50 @@ function Settings() {
     setTimeout(() => {
       setPasswordMessage("");
     }, 3000);
+  };
+
+  const handleRequestGooglePasswordCode = async () => {
+    setSetupError("");
+    setSetupMessage("");
+    setSetupBusy(true);
+    try {
+      await requestGooglePasswordSetup();
+      setSetupCodeRequested(true);
+      setSetupMessage("If email delivery succeeded, a verification code was sent to your Google account email.");
+    } catch (err) {
+      setSetupError(friendlyError(err));
+    } finally {
+      setSetupBusy(false);
+    }
+  };
+
+  const handleGooglePasswordSetup = async (event) => {
+    event.preventDefault();
+    setSetupError("");
+    setSetupMessage("");
+    if (setupPassword !== setupConfirmPassword) {
+      setSetupError("Passwords do not match.");
+      return;
+    }
+    setSetupBusy(true);
+    try {
+      const result = await confirmGooglePasswordSetup({
+        username: setupUsername.trim(),
+        code: setupCode.trim(),
+        password: setupPassword,
+        confirmPassword: setupConfirmPassword,
+      });
+      setUser((current) => ({ ...current, ...result.user }));
+      setSetupCode("");
+      setSetupPassword("");
+      setSetupConfirmPassword("");
+      setSetupCodeRequested(false);
+      setSetupMessage("Password sign-in has been enabled for this account.");
+    } catch (err) {
+      setSetupError(friendlyError(err));
+    } finally {
+      setSetupBusy(false);
+    }
   };
 
   const togglePreference = async (key) => {
@@ -565,6 +626,131 @@ function Settings() {
               </div>
 
               <div className="divide-y divide-zinc-800">
+                {user?.authProvider === "google" && !user.hasPassword && (
+                  <div className="py-6">
+                    <h3 className="text-sm font-semibold text-white">
+                      Set Up Password Sign-In
+                    </h3>
+                    <p className="mt-1 text-sm text-zinc-600">
+                      Verify ownership of your Google account email to add username and password sign-in to this same account.
+                    </p>
+
+                    {!setupCodeRequested ? (
+                      <button
+                        type="button"
+                        onClick={handleRequestGooglePasswordCode}
+                        disabled={setupBusy}
+                        className="mt-5 rounded-lg bg-lime-400 px-6 py-3 text-sm font-bold text-black transition hover:bg-lime-300 disabled:opacity-50"
+                      >
+                        {setupBusy ? "Sending..." : "Send Verification Code"}
+                      </button>
+                    ) : (
+                      <form onSubmit={handleGooglePasswordSetup} className="mt-5 space-y-5">
+                        <div>
+                          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500">
+                            Username
+                          </label>
+                          <input
+                            value={setupUsername}
+                            onChange={(event) => setSetupUsername(event.target.value)}
+                            minLength={3}
+                            maxLength={32}
+                            required
+                            disabled={setupBusy}
+                            className="w-full rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-white outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500">
+                            Email Verification Code
+                          </label>
+                          <input
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            pattern="[0-9]{6}"
+                            minLength={6}
+                            maxLength={6}
+                            value={setupCode}
+                            onChange={(event) => setSetupCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                            required
+                            disabled={setupBusy}
+                            placeholder="000000"
+                            className="w-full rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm tracking-widest text-white outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500">
+                            New Password
+                          </label>
+                          <input
+                            type="password"
+                            autoComplete="new-password"
+                            minLength={10}
+                            maxLength={128}
+                            value={setupPassword}
+                            onChange={(event) => setSetupPassword(event.target.value)}
+                            required
+                            disabled={setupBusy}
+                            className="w-full rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-white outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500">
+                            Confirm New Password
+                          </label>
+                          <input
+                            type="password"
+                            autoComplete="new-password"
+                            minLength={10}
+                            maxLength={128}
+                            value={setupConfirmPassword}
+                            onChange={(event) => setSetupConfirmPassword(event.target.value)}
+                            required
+                            disabled={setupBusy}
+                            className="w-full rounded-lg border border-zinc-800 bg-black px-4 py-3 text-sm text-white outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
+                          />
+                        </div>
+                        {setupError && (
+                          <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                            {setupError}
+                          </p>
+                        )}
+                        {setupMessage && (
+                          <p role="status" className="rounded-lg border border-lime-400/20 bg-lime-400/10 px-4 py-3 text-sm text-lime-400">
+                            {setupMessage}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-4">
+                          <button
+                            type="submit"
+                            disabled={setupBusy}
+                            className="rounded-lg bg-lime-400 px-6 py-3 text-sm font-bold text-black transition hover:bg-lime-300 disabled:opacity-50"
+                          >
+                            {setupBusy ? "Saving..." : "Set Up Password"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleRequestGooglePasswordCode}
+                            disabled={setupBusy}
+                            className="text-xs font-semibold text-lime-400 hover:text-lime-300 disabled:opacity-50"
+                          >
+                            Resend code
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                    {setupError && !setupCodeRequested && (
+                      <p role="alert" className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                        {setupError}
+                      </p>
+                    )}
+                    {setupMessage && !setupCodeRequested && (
+                      <p role="status" className="mt-4 rounded-lg border border-lime-400/20 bg-lime-400/10 px-4 py-3 text-sm text-lime-400">
+                        {setupMessage}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="py-6">
                   <h3 className="text-sm font-semibold text-white">
                     Password

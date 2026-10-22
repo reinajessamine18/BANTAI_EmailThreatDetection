@@ -15,7 +15,7 @@ _PROFILE_COLUMNS = ("full_name", "job_title", "profile_picture", "email")
 def get_user(execute: Execute, user_id: int) -> Optional[Dict[str, Any]]:
     rows = execute(
         "SELECT user_id, full_name, email, role, job_title, tier_label, profile_picture, "
-        "password_hash, auth_provider, failed_login_attempts, locked_until "
+        "password_hash, auth_provider, username, failed_login_attempts, locked_until "
         "FROM users WHERE user_id = :uid",
         {"uid": user_id},
     )

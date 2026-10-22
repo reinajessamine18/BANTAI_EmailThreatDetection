@@ -123,7 +123,20 @@ def _check_existing_version(
     while found < required:
         migration = sql_dir / "migrations" / f"{found}_to_{required}.sql"
         if not migration.is_file():
-            migration = sql_dir / "migrations" / f"{found}_to_{found + 1}.sql"
+            migration_dir = sql_dir / "migrations"
+            intermediate = []
+            for candidate in migration_dir.glob(f"{found}_to_*.sql"):
+                try:
+                    target = int(candidate.stem.split("_to_")[-1])
+                except ValueError:
+                    continue
+                if found < target < required:
+                    intermediate.append((target, candidate))
+            migration = (
+                max(intermediate, key=lambda item: item[0])[1]
+                if intermediate
+                else migration_dir / f"{found}_to_{found + 1}.sql"
+            )
         if not migration.is_file():
             raise DatabaseInitError(
                 f"database '{db_name}' schema version is {found} but the code expects {required}; "

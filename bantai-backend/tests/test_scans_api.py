@@ -18,6 +18,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 import app.main as main_module  # noqa: E402
+from app.api.routes import auth as auth_routes  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.services import ml_service  # noqa: E402
 from app.services.ml_service import MlStatus, MlUnavailable  # noqa: E402
@@ -37,18 +38,37 @@ def make_client(monkeypatch, predict=fake_predict, authenticated=False):
     monkeypatch.setattr(main_module, "load_ml", lambda _dir: MlStatus(True, "ready"))
     monkeypatch.setattr(ml_service, "predict", predict)
     monkeypatch.setattr(ml_service, "max_body_chars", lambda: 200_000)
+    monkeypatch.setenv("BANTAI_SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("BANTAI_SMTP_SENDER", "no-reply@example.test")
+    get_settings.cache_clear()
+    otp_codes = []
+    monkeypatch.setattr(
+        auth_routes,
+        "send_otp_email",
+        lambda _settings, _email, code, _purpose, _ttl: otp_codes.append(code),
+    )
     with TestClient(main_module.create_app()) as client:
+        client.otp_codes = otp_codes
         if authenticated:
             registration = client.post(
                 "/api/v1/auth/register",
                 json={
                     "full_name": "Scan Test User",
                     "email": "scan-test@example.com",
+                    "username": "scan-test-user",
                     "password": "Correct horse battery 42!",
+                    "confirm_password": "Correct horse battery 42!",
                 },
             )
-            assert registration.status_code == 201
-            client.headers.update({"Authorization": f"Bearer {registration.json()['accessToken']}"})
+            assert registration.status_code == 202
+            verification = client.post(
+                "/api/v1/auth/register/verify",
+                json={"email": "scan-test@example.com", "code": otp_codes[-1]},
+            )
+            assert verification.status_code == 200
+            client.headers.update(
+                {"Authorization": f"Bearer {verification.json()['accessToken']}"}
+            )
         yield client
 
 
@@ -138,17 +158,35 @@ def test_signed_in_scans_continue_to_work(monkeypatch):
 
 def test_real_model_end_to_end(monkeypatch):
     """Real TF-IDF + XGBoost + SHAP. Skipped when the model cannot be loaded."""
+    monkeypatch.setenv("BANTAI_SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("BANTAI_SMTP_SENDER", "no-reply@example.test")
+    get_settings.cache_clear()
+    otp_codes = []
+    monkeypatch.setattr(
+        auth_routes,
+        "send_otp_email",
+        lambda _settings, _email, code, _purpose, _ttl: otp_codes.append(code),
+    )
     with TestClient(main_module.create_app()) as client:
         registration = client.post(
             "/api/v1/auth/register",
             json={
                 "full_name": "Scan Test User",
                 "email": "scan-test@example.com",
+                "username": "scan-test-user",
                 "password": "Correct horse battery 42!",
+                "confirm_password": "Correct horse battery 42!",
             },
         )
-        assert registration.status_code == 201
-        client.headers.update({"Authorization": f"Bearer {registration.json()['accessToken']}"})
+        assert registration.status_code == 202
+        verification = client.post(
+            "/api/v1/auth/register/verify",
+            json={"email": "scan-test@example.com", "code": otp_codes[-1]},
+        )
+        assert verification.status_code == 200
+        client.headers.update(
+            {"Authorization": f"Bearer {verification.json()['accessToken']}"}
+        )
         if not client.app.state.ml_status.ready:
             pytest.skip("real ML model not available in this environment")
         resp = client.post(URL, json={

@@ -47,6 +47,51 @@ def test_cors_allows_vite_origin(monkeypatch):
     assert resp.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
 
+def test_unprefixed_smtp_port_environment_variable_is_supported(monkeypatch):
+    from app.core.config import BACKEND_DIR, Settings
+
+    monkeypatch.delenv("BANTAI_SMTP_PORT", raising=False)
+    monkeypatch.setenv("SMTP_PORT", "2525")
+    assert Settings().smtp_port == 2525
+    assert Settings.model_config["env_file"] == BACKEND_DIR / ".env"
+
+
+def test_auth_settings_accept_unprefixed_names_from_dotenv(tmp_path, monkeypatch):
+    from app.core.config import Settings
+
+    monkeypatch.delenv("SMTP_HOST", raising=False)
+    monkeypatch.delenv("SMTP_PORT", raising=False)
+    monkeypatch.delenv("SMTP_USERNAME", raising=False)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    monkeypatch.delenv("SMTP_FROM_EMAIL", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("GOOGLE_REDIRECT_URI", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "SMTP_HOST=smtp.example.test\n"
+        "SMTP_PORT=2525\n"
+        "SMTP_USERNAME=test-login\n"
+        "SMTP_PASSWORD=test-password\n"
+        "SMTP_FROM_EMAIL=sender@example.test\n"
+        "GOOGLE_CLIENT_ID=test-client-id\n"
+        "GOOGLE_CLIENT_SECRET=test-client-secret\n"
+        "GOOGLE_REDIRECT_URI=http://localhost:8000/api/v1/auth/google/callback\n",
+        encoding="utf-8",
+    )
+    settings = Settings(_env_file=env_file)
+    assert (settings.smtp_host, settings.smtp_port, settings.smtp_username) == (
+        "smtp.example.test",
+        2525,
+        "test-login",
+    )
+    assert settings.smtp_password.get_secret_value() == "test-password"
+    assert settings.smtp_sender == "sender@example.test"
+    assert settings.google_client_id == "test-client-id"
+    assert settings.google_client_secret.get_secret_value() == "test-client-secret"
+    assert settings.google_redirect_uri.endswith("/api/v1/auth/google/callback")
+
+
 def test_validation_errors_do_not_echo_submitted_value(monkeypatch):
     monkeypatch.setattr(main_module, "load_ml", lambda _d: MlStatus(True, "ready"))
     app = main_module.create_app()

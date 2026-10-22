@@ -73,27 +73,48 @@ with optional demo data (new databases only):
 python -m app.db.init_db --with-sample
 ```
 
-Supported schema upgrades run from `bantai-database/migrations/` when the server starts.
-The version-9 Google SSO database is upgraded to version 10 while preserving existing
-users, sessions, scans, and audit records. Existing Google SSO accounts have no password
-hashes; this application does not implement Google sign-in, so those accounts cannot use
-password sign-in until an account recovery/setup flow is available. Back up the database
-before deploying schema changes. The server never deletes an existing database to upgrade
-it; it refuses to start if a migration path is missing or the database is newer than the
-application.
+Supported schema upgrades run forward from `bantai-database/migrations/` when the server
+starts. The current schema is version 11. Upgrade migrations preserve existing user IDs,
+sessions, scans, and audit records; the version-10-to-11 migration adds local-auth and
+OTP/OAuth support without rebuilding the existing Google SSO accounts. Back up
+`bantai-backend/bantai.db` before applying a migration. The server never deletes an
+existing database to upgrade it; it refuses to start if a migration path is missing or
+the database is newer than the application.
 
-## Password recovery
+## Authentication and email
 
-Password recovery sends a single-use link to the account's registered email address.
-The email address by itself is not sufficient to change a password. Configure SMTP
-STARTTLS in `bantai-backend/.env` using the `BANTAI_SMTP_*` variables in `.env.example`,
-and set `BANTAI_FRONTEND_BASE_URL` to the trusted frontend origin. Recovery remains
-disabled until SMTP host and sender are configured.
+Registration creates an inactive local account and emails a six-digit verification code.
+The account becomes active only after the code is verified. Login accepts a username or
+email address. Password recovery uses a separately verified OTP and a short-lived,
+single-use reset authorization; passwords are never written to browser storage.
 
-Implementation defaults (not research requirements): reset links expire after 30 minutes,
-and each client IP may request up to 5 links per hour. Only a SHA-256 token hash is stored;
-successful resets revoke all active sessions. The request endpoint gives the same response
-for known and unknown email addresses to reduce account enumeration.
+Copy `.env.example` to `.env` and configure the placeholders locally. SMTP delivery uses
+STARTTLS and requires `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and
+`SMTP_FROM_EMAIL`. The documented unprefixed names and the equivalent `BANTAI_SMTP_*`
+names are accepted. Brevo SMTP values belong only in this backend environment file; do
+not commit `.env`. Registration and Google-account password setup remain unavailable when
+email delivery is not configured.
+
+Google sign-in requires `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and
+`GOOGLE_REDIRECT_URI`. Register this exact development callback in Google Cloud Console:
+
+```text
+http://localhost:8000/api/v1/auth/google/callback
+```
+
+Set `BANTAI_FRONTEND_BASE_URL` to the frontend origin (default
+`http://localhost:5173`). The client secret is backend-only. OAuth uses a server-validated
+state and nonce, Google ID-token verification, the stable Google subject ID, and a
+single-use short-lived ticket exchanged by the frontend. An existing account with a
+matching email is not linked automatically. Existing Google accounts retain their IDs
+and data; signed-in Google users without a password can verify their email and add local
+password sign-in to the same account in Settings.
+
+Implementation defaults (not research requirements): OTPs expire after 10 minutes, are
+single-use, and have a five-attempt limit. Resends are throttled to one per minute and
+five per hour. Password-reset responses are generic for known and unknown addresses to
+reduce account enumeration; the password reset authorization expires after 10 minutes.
+Only OTP/token hashes are stored, and a successful password reset revokes active sessions.
 
 ## Test
 

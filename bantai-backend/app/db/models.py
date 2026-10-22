@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models mirroring bantai-database/schema.sql (schema version 10).
+"""SQLAlchemy ORM models mirroring bantai-database/schema.sql (schema version 11).
 
 IMPORTANT: the SQL files are the source of truth. These classes only *describe*
 existing tables for querying. Never call `Base.metadata.create_all()`: it would
@@ -30,6 +30,8 @@ class User(Base):
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     full_name: Mapped[str] = mapped_column(Text)
     email: Mapped[str] = mapped_column(Text)
+    username: Mapped[Optional[str]] = mapped_column(Text)
+    email_verified_at: Mapped[Optional[str]] = mapped_column(Text)
     password_hash: Mapped[Optional[str]] = mapped_column(Text)
     auth_provider: Mapped[str] = mapped_column(Text, server_default="local")
     sso_subject_id: Mapped[Optional[str]] = mapped_column(Text)
@@ -87,6 +89,43 @@ class PasswordResetRequest(Base):
     request_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     client_ip: Mapped[str] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text)
+
+
+class EmailOtpChallenge(Base):
+    __tablename__ = "email_otp_challenges"
+
+    challenge_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"))
+    email: Mapped[str] = mapped_column(Text)
+    purpose: Mapped[str] = mapped_column(Text)
+    code_hash: Mapped[str] = mapped_column(Text)
+    client_ip: Mapped[Optional[str]] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    expires_at: Mapped[str] = mapped_column(Text)
+    consumed_at: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, server_default=_NOW)
+
+
+class OAuthState(Base):
+    __tablename__ = "oauth_states"
+
+    state_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_hash: Mapped[str] = mapped_column(Text)
+    nonce_hash: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[str] = mapped_column(Text)
+    consumed_at: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, server_default=_NOW)
+
+
+class OAuthLoginTicket(Base):
+    __tablename__ = "oauth_login_tickets"
+
+    ticket_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticket_hash: Mapped[str] = mapped_column(Text)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"))
+    expires_at: Mapped[str] = mapped_column(Text)
+    consumed_at: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, server_default=_NOW)
 
 
 class GuestScanReservation(Base):

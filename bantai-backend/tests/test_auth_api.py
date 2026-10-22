@@ -26,7 +26,23 @@ def make_client(monkeypatch):
 
 
 def register(client, email="a@example.com", password=PASSWORD):
-    return client.post(f"{API}/auth/register", json={"full_name": "Ana Test", "email": email, "password": password})
+    username = "ana-test" if email.lower() == "a@example.com" else f"user-{email.split('@')[0]}"
+    registration = client.post(
+        f"{API}/auth/register",
+        json={
+            "full_name": "Ana Test",
+            "username": username,
+            "email": email,
+            "password": password,
+            "confirm_password": password,
+        },
+    )
+    if registration.status_code != 202:
+        return registration
+    return client.post(
+        f"{API}/auth/register/verify",
+        json={"email": email, "code": client.otp_codes[-1]},
+    )
 
 
 def bearer(token):
@@ -44,7 +60,7 @@ def db_rows(sql, args=()):
 def test_register_login_use_logout_flow(monkeypatch):
     with make_client(monkeypatch) as client:
         reg = register(client)
-        assert reg.status_code == 201
+        assert reg.status_code == 200
         token = reg.json()["accessToken"]
         assert reg.json()["user"]["email"] == "a@example.com" and "password" not in reg.text
 
@@ -71,9 +87,13 @@ def test_register_login_use_logout_flow(monkeypatch):
 
 def test_registration_stores_a_hash_and_creates_the_settings_row(monkeypatch):
     with make_client(monkeypatch) as client:
-        register(client)
-    [(stored,)] = db_rows("SELECT password_hash FROM users")
+        user = register(client)
+    [(stored, active, verified_at)] = db_rows(
+        "SELECT password_hash, is_active, email_verified_at FROM users"
+    )
     assert stored.startswith("pbkdf2_sha256$") and PASSWORD not in stored
+    assert active == 1 and verified_at is not None
+    assert user.json()["user"]["username"] == "ana-test"
     assert db_rows("SELECT auto_save_scan_logs FROM user_settings") == [(1,)]
 
 
@@ -100,9 +120,116 @@ def test_registration_validation(monkeypatch, payload, status):
 
 def test_duplicate_email_is_409(monkeypatch):
     with make_client(monkeypatch) as client:
-        assert register(client).status_code == 201
+        assert register(client).status_code == 200
+        conn = sqlite3.connect(get_settings().database_path)
+        conn.execute("UPDATE users SET email = 'A@EXAMPLE.COM'")
+        conn.commit()
+        conn.close()
         assert register(client, email="A@EXAMPLE.COM").status_code == 409
     assert db_rows("SELECT COUNT(*) FROM users") == [(1,)]
+
+
+def test_registration_stays_inactive_until_email_verification(monkeypatch):
+    with make_client(monkeypatch) as client:
+        response = client.post(
+            f"{API}/auth/register",
+            json={
+                "username": "pending-user",
+                "email": "pending@example.com",
+                "password": PASSWORD,
+                "confirm_password": PASSWORD,
+            },
+        )
+        assert response.status_code == 202
+        blocked = client.post(
+            f"{API}/auth/login",
+            json={"identifier": "pending-user", "password": PASSWORD},
+        )
+        assert blocked.status_code == 403
+        verified = client.post(
+            f"{API}/auth/register/verify",
+            json={"email": "pending@example.com", "code": client.otp_codes[-1]},
+        )
+        assert verified.status_code == 200
+        assert verified.json()["user"]["email"] == "pending@example.com"
+    assert db_rows("SELECT is_active, email_verified_at IS NOT NULL FROM users") == [(1, 1)]
+
+
+def test_registration_otp_attempts_are_limited_and_challenge_is_consumed(monkeypatch):
+    with make_client(monkeypatch) as client:
+        response = client.post(
+            f"{API}/auth/register",
+            json={
+                "username": "otp-limited",
+                "email": "otp-limited@example.com",
+                "password": PASSWORD,
+                "confirm_password": PASSWORD,
+            },
+        )
+        assert response.status_code == 202
+        correct_code = client.otp_codes[-1]
+        wrong_code = f"{(int(correct_code) + 1) % 1_000_000:06d}"
+        for _ in range(5):
+            invalid = client.post(
+                f"{API}/auth/register/verify",
+                json={"email": "otp-limited@example.com", "code": wrong_code},
+            )
+            assert invalid.status_code == 400
+        replay = client.post(
+            f"{API}/auth/register/verify",
+            json={"email": "otp-limited@example.com", "code": correct_code},
+        )
+    assert replay.status_code == 400
+    assert db_rows("SELECT attempts, consumed_at IS NOT NULL FROM email_otp_challenges") == [
+        (5, 1)
+    ]
+    assert db_rows("SELECT is_active FROM users") == [(0,)]
+
+
+def test_registration_resend_is_rate_limited(monkeypatch):
+    with make_client(monkeypatch) as client:
+        response = client.post(
+            f"{API}/auth/register",
+            json={
+                "username": "resend-user",
+                "email": "resend@example.com",
+                "password": PASSWORD,
+                "confirm_password": PASSWORD,
+            },
+        )
+        assert response.status_code == 202
+        resend = client.post(
+            f"{API}/auth/register/resend",
+            json={"email": "resend@example.com"},
+        )
+    assert resend.status_code == 429
+    assert resend.json()["detail"]["code"] == "verification_rate_limited"
+    assert db_rows("SELECT COUNT(*) FROM email_otp_challenges") == [(1,)]
+
+
+def test_duplicate_username_is_rejected_case_insensitively(monkeypatch):
+    with make_client(monkeypatch) as client:
+        first = client.post(
+            f"{API}/auth/register",
+            json={
+                "username": "same-name",
+                "email": "first@example.com",
+                "password": PASSWORD,
+                "confirm_password": PASSWORD,
+            },
+        )
+        second = client.post(
+            f"{API}/auth/register",
+            json={
+                "username": "SAME-NAME",
+                "email": "second@example.com",
+                "password": PASSWORD,
+                "confirm_password": PASSWORD,
+            },
+        )
+    assert first.status_code == 202
+    assert second.status_code == 409
+    assert second.json()["detail"]["code"] == "username_already_registered"
 
 
 def test_guests_cannot_scan_or_see_history(monkeypatch):

@@ -21,6 +21,7 @@
 -- REVISION 5 enables Auto-save Scan Logs by default for all accounts.
 -- REVISION 5 enforces the guest scan allowance on the server.
 -- REVISION 10 preserves legacy Google SSO identities alongside local accounts.
+-- REVISION 11 adds usernames, email verification, OTPs, and Google OAuth state.
 -- =====================================================================
 PRAGMA foreign_keys = ON;
 
@@ -31,6 +32,8 @@ CREATE TABLE users (
     user_id               INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name             TEXT    NOT NULL,
     email                 TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    username              TEXT,
+    email_verified_at     TEXT,
     password_hash         TEXT,                                   -- bcrypt/argon2 hash; NULL for SSO-only users
     auth_provider         TEXT    NOT NULL DEFAULT 'local'
                           CHECK (auth_provider IN ('local','saml','google')),
@@ -52,6 +55,8 @@ CREATE TABLE users (
 );
 CREATE UNIQUE INDEX ux_users_sso
     ON users (sso_idp_entity_id, sso_subject_id) WHERE sso_subject_id IS NOT NULL;
+CREATE UNIQUE INDEX ux_users_username
+    ON users (username COLLATE NOCASE) WHERE username IS NOT NULL;
 
 -- ---------------------------------------------------------------------
 -- 2. USER_SESSIONS  (Login / Logout -> "Terminate Secure Session")
@@ -360,5 +365,43 @@ CREATE TABLE password_reset_requests (
 CREATE INDEX ix_password_reset_requests_ip_time
     ON password_reset_requests (client_ip, created_at);
 
+-- ---------------------------------------------------------------------
+-- 16. EMAIL OTP AND GOOGLE OAUTH TRANSACTIONS
+-- ---------------------------------------------------------------------
+CREATE TABLE email_otp_challenges (
+    challenge_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    email        TEXT NOT NULL COLLATE NOCASE,
+    purpose      TEXT NOT NULL CHECK (purpose IN ('registration','password_reset','google_password_setup')),
+    code_hash    TEXT NOT NULL,
+    client_ip    TEXT,
+    attempts     INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
+    expires_at   TEXT NOT NULL,
+    consumed_at  TEXT,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+CREATE INDEX ix_email_otp_user_purpose
+    ON email_otp_challenges (user_id, purpose, created_at);
+CREATE INDEX ix_email_otp_ip_purpose
+    ON email_otp_challenges (client_ip, purpose, created_at);
+
+CREATE TABLE oauth_states (
+    state_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    state_hash  TEXT NOT NULL UNIQUE,
+    nonce_hash  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL,
+    consumed_at TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+CREATE TABLE oauth_login_tickets (
+    ticket_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_hash TEXT NOT NULL UNIQUE,
+    user_id     INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    expires_at  TEXT NOT NULL,
+    consumed_at TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
 -- Schema version. Bump this whenever a table/column/CHECK changes.
-PRAGMA user_version = 10;
+PRAGMA user_version = 11;
