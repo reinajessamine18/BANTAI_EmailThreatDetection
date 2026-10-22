@@ -109,13 +109,20 @@ def test_reset_requests_are_rate_limited_by_client_ip(monkeypatch):
     assert limited.json()["detail"]["code"] == "password_reset_rate_limited"
 
 
+
 def test_reset_configuration_failure_is_the_same_for_known_and_unknown_addresses(monkeypatch):
     with make_client(monkeypatch) as client:
         register(client)
-        monkeypatch.delenv("BANTAI_SMTP_HOST", raising=False)
-        monkeypatch.delenv("BANTAI_SMTP_SENDER", raising=False)
+
+        # Override values loaded from .env so this test has no SMTP host or sender.
+        monkeypatch.setenv("SMTP_HOST", "")
+        monkeypatch.setenv("SMTP_FROM_EMAIL", "")
         get_settings.cache_clear()
+
         known = client.post(RESET_REQUEST, json={"email": "a@example.com"})
         unknown = client.post(RESET_REQUEST, json={"email": "nobody@example.com"})
+
+    get_settings.cache_clear()
+
     assert known.status_code == unknown.status_code == 503
     assert known.json() == unknown.json()
