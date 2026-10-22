@@ -22,6 +22,7 @@
 -- REVISION 5 enforces the guest scan allowance on the server.
 -- REVISION 10 preserves legacy Google SSO identities alongside local accounts.
 -- REVISION 11 adds usernames, email verification, OTPs, and Google OAuth state.
+-- REVISION 12 adds a state-bound, allowlisted browser-extension OAuth return URI.
 -- =====================================================================
 PRAGMA foreign_keys = ON;
 
@@ -386,12 +387,13 @@ CREATE INDEX ix_email_otp_ip_purpose
     ON email_otp_challenges (client_ip, purpose, created_at);
 
 CREATE TABLE oauth_states (
-    state_id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    state_hash  TEXT NOT NULL UNIQUE,
-    nonce_hash  TEXT NOT NULL,
-    expires_at  TEXT NOT NULL,
-    consumed_at TEXT,
-    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    state_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    state_hash            TEXT NOT NULL UNIQUE,
+    nonce_hash            TEXT NOT NULL,
+    extension_redirect_uri TEXT,
+    expires_at            TEXT NOT NULL,
+    consumed_at           TEXT,
+    created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 
 CREATE TABLE oauth_login_tickets (
@@ -404,4 +406,4 @@ CREATE TABLE oauth_login_tickets (
 );
 
 -- Schema version. Bump this whenever a table/column/CHECK changes.
-PRAGMA user_version = 11;
+PRAGMA user_version = 12;

@@ -83,6 +83,10 @@ class Settings(BaseSettings):
             "GOOGLE_REDIRECT_URI", "BANTAI_GOOGLE_REDIRECT_URI"
         ),
     )
+    extension_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("BANTAI_EXTENSION_ID", "EXTENSION_ID"),
+    )
 
 
 @lru_cache(maxsize=1)

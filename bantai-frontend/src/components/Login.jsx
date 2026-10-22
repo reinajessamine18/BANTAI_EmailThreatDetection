@@ -23,7 +23,14 @@ function Login() {
   const navigate = useNavigate();
   const oauthTicket = searchParams.get("oauth_ticket");
   const oauthError = searchParams.get("error");
-  const visibleError = error || (oauthError ? friendlyError(new ApiError(400, oauthError, "")) : "");
+  const handoffError = searchParams.get("handoff_error");
+  const visibleError = error
+    || (oauthError ? friendlyError(new ApiError(400, oauthError, "")) : "")
+    || (handoffError === "unavailable"
+      ? "BANTAI could not confirm your sign-in. Check your connection and try opening the page from the extension again."
+      : handoffError
+        ? "This sign-in link expired. Log in, then open the page from the extension again."
+        : "");
 
   useEffect(() => {
     if (oauthError) return;

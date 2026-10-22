@@ -6,7 +6,9 @@ let session = null;
 let currentEmail = null;
 let currentResult = null;
 let currentError = "";
-let authMode = "login";
+let authStep = "login";
+let authEmail = "";
+let resetAuthorization = null;
 let view = "loading";
 let profileReturnView = "ready";
 
@@ -39,102 +41,349 @@ function api(path, { method = "GET", body, auth = true } = {}) {
   });
 }
 
-function footer(status = "SYNC ENGINE READY") {
-  return `<footer class="footer"><span class="status">● ${escapeHtml(status)}</span><span>BANTAI · 1.0.0</span></footer>`;
-}
-
-function shell(content, status) {
-  app.innerHTML = `<div class="shell">${content}${footer(status)}</div>`;
+function shell(content) {
+  app.innerHTML = `<div class="shell">${content}</div>`;
 }
 
 function header(action = "") {
-  return `<header class="topbar"><div class="brand"><span class="brand-mark">⬟</span><span>Bantai.</span></div>${action}</header>`;
+  return `<header class="topbar"><div class="brand">BANTAI<span>.</span></div>${action}</header>`;
 }
 
-function showAuth(error = "") {
-  view = "auth";
-  const signup = authMode === "signup";
-  shell(`
-    ${header()}
-    <section class="content">
-      <div class="auth-intro">
-        <span class="pill">● BANTAI SCAN ENGINE</span>
-        <h1>${signup ? "Create your account" : "Sign in to BANTAI"}</h1>
-        <p>Link this extension to your account to scan emails from Gmail.</p>
-      </div>
-      <div class="notice">Your existing BANTAI account and backend are used. Email content is sent only when you choose to scan.</div>
-      <div class="tabs" role="tablist" aria-label="Account action">
-        <button type="button" data-mode="login" aria-selected="${!signup}">Sign In</button>
-        <button type="button" data-mode="signup" aria-selected="${signup}">Sign Up</button>
-      </div>
-      ${error ? `<div class="notice error" role="alert">${escapeHtml(error)}</div>` : ""}
-      <form class="form" id="auth-form">
-        ${signup ? `<div class="field"><label for="full-name">Full name</label><input id="full-name" name="fullName" autocomplete="name" required minlength="2" maxlength="120"></div>` : ""}
-        <div class="field"><label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="email" required maxlength="254"></div>
-        <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}" required minlength="${signup ? "10" : "1"}" maxlength="128"></div>
-        <button class="button button-primary" type="submit">${signup ? "Create BANTAI Account →" : "Sign In to BANTAI →"}</button>
-        ${!signup ? `<button class="text-button small" type="button" id="forgot-password">Forgot password?</button>` : ""}
-      </form>
-    </section>`, "ACCOUNT REQUIRED");
+function webAppPage(path) {
+  return new URL(path, session.webAppUrl || DEFAULT_WEB_APP_URL).toString();
+}
 
-  app.querySelectorAll("[data-mode]").forEach((button) => {
+async function openAuthenticatedWebPage(path, trigger) {
+  trigger.disabled = true;
+  try {
+    const response = await api("/auth/web-handoff", { method: "POST" });
+    if (!response?.ok) {
+      if (response?.error?.status === 401) {
+        session.accessToken = null;
+        session.user = null;
+        showAuth("Your BANTAI session expired. Sign in again to continue.");
+        return;
+      }
+      throw new Error(
+        response?.error?.message
+          || response?.error
+          || "BANTAI could not prepare your website sign-in.",
+      );
+    }
+    if (typeof response.data?.ticket !== "string") {
+      throw new Error("BANTAI could not prepare your website sign-in. Please try again.");
+    }
+
+    const target = new URL(path, session.webAppUrl || DEFAULT_WEB_APP_URL);
+    target.hash = new URLSearchParams({
+      bantai_handoff: response.data.ticket,
+    }).toString();
+    await new Promise((resolve, reject) => {
+      chrome.tabs.create({ url: target.toString() }, (tab) => {
+        const error = chrome.runtime.lastError;
+        if (error) reject(new Error(error.message));
+        else if (!tab?.id) reject(new Error("Chrome did not open the BANTAI website tab."));
+        else resolve(tab);
+      });
+    });
+  } catch (error) {
+    let feedback = app.querySelector("#web-page-error");
+    if (!feedback) {
+      feedback = document.createElement("div");
+      feedback.id = "web-page-error";
+      feedback.className = "notice error";
+      feedback.setAttribute("role", "alert");
+      app.querySelector(".nav-list")?.before(feedback);
+    }
+    feedback.textContent = error.message || "BANTAI could not open the website. Please try again.";
+  } finally {
+    if (trigger.isConnected) trigger.disabled = false;
+  }
+}
+
+function showAuth(error = "", notice = "") {
+  view = "auth";
+  const login = authStep === "login";
+  const reset = authStep.startsWith("reset-");
+  const title = {
+    login: "Sign in",
+    "reset-email": "Reset your password",
+    "reset-verify": "Verify your reset code",
+    "reset-password": "Choose a new password",
+  }[authStep];
+  const passwordInput = (id, name, label, autocomplete, placeholder, confirmation = false) => `
+    <div class="field">
+      <div class="field-heading">
+        <label for="${id}">${label}</label>
+        ${login && id === "password" ? `<button class="forgot-link" type="button" id="forgot-password">Forgot password?</button>` : ""}
+      </div>
+      <div class="password-input">
+        <input id="${id}" name="${name}" type="password" autocomplete="${autocomplete}" placeholder="${placeholder}" required minlength="${confirmation ? 10 : 1}" maxlength="128">
+        <button class="password-toggle" type="button" data-password-toggle="${id}" aria-label="Show ${label.toLowerCase()}" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </button>
+      </div>
+    </div>`;
+  const fields = login
+    ? `
+      <div class="field"><label for="identifier">Username or Email</label><input id="identifier" name="identifier" autocomplete="username" placeholder="Username or name@company.com" required maxlength="254" value="${escapeHtml(authEmail)}"></div>
+      ${passwordInput("password", "password", "Password", "current-password", "••••••••••••")}`
+    : authStep === "reset-email"
+      ? `<div class="field"><label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="email" placeholder="name@company.com" required maxlength="254" value="${escapeHtml(authEmail)}"></div>`
+      : authStep === "reset-verify"
+        ? `
+          <div class="notice">Enter the six-digit code sent to <strong>${escapeHtml(authEmail)}</strong>.</div>
+          <div class="field"><label for="code">Six-digit code</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" required minlength="6" maxlength="6" pattern="[0-9]{6}"></div>`
+        : `
+          ${passwordInput("password", "password", "New password", "new-password", "At least 10 characters", true)}
+          ${passwordInput("confirm-password", "confirmPassword", "Confirm new password", "new-password", "Confirm your password", true)}`;
+  const submitLabel = {
+    login: "Sign In",
+    "reset-email": "Send Reset Code",
+    "reset-verify": "Verify Reset Code",
+    "reset-password": "Save New Password",
+  }[authStep];
+  const contextButtons = login
+    ? `<div class="auth-divider"><span>OR</span></div>
+       <button class="button button-google" type="button" id="google-login"><span aria-hidden="true" class="google-mark">G</span><span>Continue with Google</span></button>
+       <div class="signup-prompt"><p>Don't have a BANTAI account?</p>
+       <a class="auth-link" id="website-signup" target="_blank" rel="noopener noreferrer">Create an account</a></div>`
+    : authStep === "reset-email"
+      ? `<button class="text-button small" type="button" id="show-login">Back to log in</button>`
+      : authStep === "reset-verify"
+        ? `<button class="text-button small" type="button" id="resend-code">Resend reset code</button>
+           <button class="text-button small" type="button" id="show-login">Back to log in</button>`
+        : `<button class="text-button small" type="button" id="show-login">Back to log in</button>`;
+  shell(`
+    <section class="auth-screen">
+      <div class="auth-card">
+      <div class="auth-intro">
+        <div class="auth-logo" aria-label="BANTAI">
+          BANTAI<span>.</span>
+        </div>
+        <h1>${title}</h1>
+        <p>${reset ? "Securely recover access to your BANTAI account." : "Access the BANTAI threat intelligence platform."}</p>
+      </div>
+      ${error || notice ? `<div class="auth-feedback">
+        ${error ? `<div class="notice error" role="alert">${escapeHtml(error)}</div>` : ""}
+        ${notice ? `<div class="notice success" role="status">${escapeHtml(notice)}</div>` : ""}
+      </div>` : ""}
+      <form class="form" id="auth-form">
+        ${fields}
+        <button class="button button-primary" type="submit">${submitLabel}</button>
+      </form>
+      ${contextButtons ? `<div class="auth-options">${contextButtons}</div>` : ""}
+      </div>
+    </section>`);
+
+  app.querySelector("#auth-form").addEventListener("submit", submitAuth);
+  app.querySelectorAll("[data-password-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
-      authMode = button.dataset.mode;
-      showAuth();
+      const input = app.querySelector(`#${button.dataset.passwordToggle}`);
+      const reveal = input.type === "password";
+      input.type = reveal ? "text" : "password";
+      button.setAttribute("aria-pressed", String(reveal));
+      const label = reveal ? "Hide password" : "Show password";
+      button.setAttribute("aria-label", label);
+      button.innerHTML = reveal
+        ? `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"></path><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17.2 17.2 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10 10 0 0 0 4-.8"></path></svg>`
+        : `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
     });
   });
-  app.querySelector("#auth-form").addEventListener("submit", submitAuth);
   app.querySelector("#forgot-password")?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${session.webAppUrl}/forgot-password` });
+    authStep = "reset-email";
+    resetAuthorization = null;
+    if (!authEmail.includes("@")) authEmail = "";
+    showAuth();
   });
+  const signupLink = app.querySelector("#website-signup");
+  if (signupLink) {
+    signupLink.href = webAppPage("/signup");
+  }
+  app.querySelector("#show-login")?.addEventListener("click", () => {
+    authStep = "login";
+    resetAuthorization = null;
+    showAuth();
+  });
+  app.querySelector("#resend-code")?.addEventListener("click", resendAuthCode);
+  app.querySelector("#google-login")?.addEventListener("click", googleLogin);
 }
 
 async function submitAuth(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
-  const signup = authMode === "signup";
-  const body = signup
-    ? {
-        full_name: String(form.get("fullName")).trim(),
-        email: String(form.get("email")).trim(),
-        password: String(form.get("password")),
-      }
-    : {
-        email: String(form.get("email")).trim(),
-        password: String(form.get("password")),
-      };
+  const step = authStep;
   const button = app.querySelector('button[type="submit"]');
   button.disabled = true;
-  button.innerHTML = `<span class="spinner"></span> Connecting...`;
-  const response = await api(`/auth/${signup ? "register" : "login"}`, {
-    method: "POST",
-    body,
-    auth: false,
-  });
+  button.innerHTML = `<span class="spinner"></span> Please wait...`;
+  let response;
+  if (step === "login") {
+    authEmail = String(form.get("identifier")).trim();
+    response = await api("/auth/login", {
+      method: "POST",
+      body: { identifier: authEmail, password: String(form.get("password")) },
+      auth: false,
+    });
+  } else if (step === "reset-email") {
+    authEmail = String(form.get("email")).trim();
+    response = await api("/auth/password-reset/request", {
+      method: "POST",
+      body: { email: authEmail },
+      auth: false,
+    });
+    if (response.ok) {
+      authStep = "reset-verify";
+      showAuth("", response.data?.message || "If the address is eligible, a code may be delivered. Check your inbox and spam folder.");
+      return;
+    }
+  } else if (step === "reset-verify") {
+    response = await api("/auth/password-reset/verify", {
+      method: "POST",
+      body: { email: authEmail, code: String(form.get("code")).trim() },
+      auth: false,
+    });
+    if (response.ok && typeof response.data?.resetAuthorization === "string") {
+      resetAuthorization = response.data.resetAuthorization;
+      authStep = "reset-password";
+      showAuth();
+      return;
+    }
+  } else {
+    const password = String(form.get("password"));
+    if (password !== String(form.get("confirmPassword"))) {
+      showAuth("Passwords do not match.");
+      return;
+    }
+    response = await api("/auth/password-reset/confirm", {
+      method: "POST",
+      body: {
+        token: resetAuthorization,
+        new_password: password,
+        confirm_password: String(form.get("confirmPassword")),
+      },
+      auth: false,
+    });
+    if (response.ok) {
+      authStep = "login";
+      resetAuthorization = null;
+      showAuth("", response.data?.message || "Password reset successfully. Log in with your new password.");
+      return;
+    }
+  }
   if (!response.ok) {
     showAuth(response.error?.message || "Could not sign in. Please try again.");
     return;
   }
+  if (step === "login") {
+    await establishSession(response.data);
+  }
+}
+
+async function establishSession(data) {
   if (
-    typeof response.data?.accessToken !== "string" ||
-    !response.data.accessToken ||
-    !response.data.user
+    typeof data?.accessToken !== "string" ||
+    !data.accessToken ||
+    !data.user
   ) {
     showAuth("The BANTAI account service returned an incomplete sign-in response.");
     return;
   }
   const saved = await send({
     type: "bantai:set-session",
-    accessToken: response.data.accessToken,
-    user: response.data.user,
+    accessToken: data.accessToken,
+    user: data.user,
   });
   if (!saved.ok) {
     showAuth(saved.error || "Could not save the sign-in session.");
     return;
   }
-  session.accessToken = response.data.accessToken;
-  session.user = response.data.user;
+  session.accessToken = data.accessToken;
+  session.user = data.user;
   await showReady();
+}
+
+async function resendAuthCode() {
+  const button = app.querySelector("#resend-code");
+  button.disabled = true;
+  button.innerHTML = `<span class="spinner"></span> Sending...`;
+  const response = await api("/auth/password-reset/resend", {
+    method: "POST",
+    body: { email: authEmail },
+    auth: false,
+  });
+  showAuth(
+    response.ok ? "" : response.error?.message || "The code could not be resent.",
+    response.ok
+      ? response.data?.message || "If eligible, a new code may be delivered."
+      : "",
+  );
+}
+
+function googleOAuthErrorMessage(code) {
+  const messages = {
+    google_login_unavailable: "Google sign-in is not configured on this BANTAI server.",
+    google_extension_not_configured: "This extension is not allowlisted for Google sign-in. Contact your BANTAI administrator.",
+    google_sign_in_cancelled: "Google sign-in was cancelled. You can try again.",
+    google_state_invalid: "The Google sign-in session expired or was invalid. Please try again.",
+    google_account_link_required: "A BANTAI account already uses this email. Log in to that account instead of linking it through Google.",
+    google_sign_in_failed: "Google could not verify this sign-in. Please try again.",
+  };
+  return messages[code] || "Google sign-in could not be completed. Please try again.";
+}
+
+async function googleLogin() {
+  const button = app.querySelector("#google-login");
+  if (!chrome.identity?.launchWebAuthFlow) {
+    showAuth("Google sign-in is not available in this browser profile.");
+    return;
+  }
+  button.disabled = true;
+  button.innerHTML = `<span class="spinner"></span> Connecting to Google...`;
+  let redirectUrl;
+  try {
+    const baseUrl = new URL(session.apiBaseUrl || DEFAULT_API_BASE_URL);
+    const extensionRedirectUri = chrome.identity.getRedirectURL("oauth2");
+    const start = new URL(`${baseUrl.toString().replace(/\/+$/, "")}/auth/google/start`);
+    start.searchParams.set("extension_redirect_uri", extensionRedirectUri);
+    redirectUrl = await new Promise((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow(
+        { url: start.toString(), interactive: true },
+        (result) => {
+          if (chrome.runtime.lastError) reject(new Error("Google sign-in could not be completed."));
+          else resolve(result);
+        },
+      );
+    });
+  } catch (error) {
+    showAuth(error.message || "Google sign-in could not be completed.");
+    return;
+  }
+  try {
+    const result = new URL(redirectUrl);
+    const params = new URLSearchParams(result.search);
+    const errorCode = params.get("error");
+    if (errorCode) {
+      showAuth(googleOAuthErrorMessage(errorCode));
+      return;
+    }
+    const ticket = params.get("oauth_ticket");
+    if (!ticket) {
+      showAuth("The Google sign-in response was incomplete. Please try again.");
+      return;
+    }
+    const response = await api("/auth/google/exchange", {
+      method: "POST",
+      body: { ticket },
+      auth: false,
+    });
+    if (!response.ok) {
+      showAuth(response.error?.message || "Google sign-in could not be completed.");
+      return;
+    }
+    await establishSession(response.data);
+  } catch {
+    showAuth("Google sign-in could not be completed. Please try again.");
+  }
 }
 
 async function extractActiveEmail() {
@@ -180,7 +429,6 @@ async function showReady(error = "") {
   const user = session.user || {};
   const emailCard = currentEmail
     ? `<article class="card message-card">
-        <span class="pill">● EMAIL IN ACTIVE TAB</span>
         <h1 class="message-title">${escapeHtml(currentEmail.subject || "No subject")}</h1>
         <div class="message-sender">From: ${escapeHtml(currentEmail.sender || "Sender address unavailable")}</div>
         <div class="message-meta"><span>Gmail · message content stays in memory</span><span>READY</span></div>
@@ -193,21 +441,19 @@ async function showReady(error = "") {
       </article>`;
 
   shell(`
-    ${header(`<button class="icon-button" id="profile-button" aria-label="Open profile">◉</button>`)}
+    ${header(`<button class="icon-button" id="profile-button" aria-label="Open profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.4 3.1-5.5 7-5.5s6.3 2.1 7 5.5"></path></svg></button>`)}
     <section class="content">
       <div class="status-row">
-        <span class="account">● ${escapeHtml(user.fullName || user.email || "BANTAI ACCOUNT")}</span>
-        <span class="pill">● ACCOUNT LINKED</span>
+        <span class="account">${escapeHtml(user.fullName || user.email || "BANTAI ACCOUNT")}</span>
       </div>
       ${currentError ? `<div class="notice error" role="alert">${escapeHtml(currentError)}</div>` : ""}
       ${emailCard}
       <div class="stack" style="margin-top:14px">
         <button class="button button-primary" id="scan-button" type="button" ${currentEmail ? "" : "disabled"}>
-          ◉ &nbsp; SCAN EMAIL FOR THREATS
+          SCAN EMAIL FOR THREATS
         </button>
       </div>
-      <p class="privacy">🔒 Scan results are handled by your BANTAI backend. Email body text is not saved in the extension. Server history behavior follows your existing BANTAI account settings.</p>
-    </section>`, "SYNC ENGINE READY");
+    </section>`);
 
   app.querySelector("#profile-button").addEventListener("click", showProfile);
   app.querySelector("#retry-extract")?.addEventListener("click", () => showReady());
@@ -225,12 +471,10 @@ function showConnectionError(message) {
         <p class="muted">${escapeHtml(message)}</p>
         <div class="stack" style="margin-top:16px">
           <button class="button button-danger" id="retry-connection" type="button">RETRY CONNECTION</button>
-          <button class="button button-quiet" id="connection-settings" type="button">CONNECTION SETTINGS</button>
         </div>
       </article>
-    </section>`, "SYSTEM DEGRADED");
+    </section>`);
   app.querySelector("#retry-connection").addEventListener("click", initialize);
-  app.querySelector("#connection-settings").addEventListener("click", showSettings);
 }
 
 function showScanning() {
@@ -240,15 +484,15 @@ function showScanning() {
     <section class="content center" style="padding-top:42px">
       <div class="avatar" style="width:76px;height:76px;font-size:30px"><span class="spinner"></span></div>
       <h1 style="font-size:19px;margin:18px 0 8px">ANALYZING EMAIL</h1>
-      <p class="muted">Sending the selected message to the BANTAI analysis service.</p>
+      <p class="muted">Checking the selected message for threats.</p>
       <div class="card" style="margin-top:25px;text-align:left">
         <div class="stack small">
-          <span>✓ &nbsp; EXTRACTED ACTIVE GMAIL MESSAGE</span>
-          <span>◌ &nbsp; RUNNING BANTAI ANALYSIS AND EXPLANATION</span>
-          <span class="muted">◌ &nbsp; WAITING FOR SERVER RESULT</span>
+          <span>Message ready for analysis</span>
+          <span>Checking for threats and preparing an explanation</span>
+          <span class="muted">Preparing results</span>
         </div>
       </div>
-    </section>`, "ANALYSIS IN PROGRESS");
+    </section>`);
 }
 
 async function scanActiveEmail() {
@@ -317,122 +561,59 @@ function showResult() {
     : "The scan was processed, but your account settings did not save it to Threat History.";
 
   shell(`
-    ${header(`<button class="icon-button" id="profile-button" aria-label="Open profile">◉</button>`)}
+    ${header(`<button class="icon-button" id="profile-button" aria-label="Open profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.4 3.1-5.5 7-5.5s6.3 2.1 7 5.5"></path></svg></button>`)}
     <section class="content stack">
-      <div class="result-banner ${risk}">● &nbsp; ${labels[risk]}</div>
+      <div class="result-banner ${risk}">${labels[risk]}</div>
       <div class="card score-card">
         <div><div class="score ${risk}">${escapeHtml(score)}</div><div class="score-caption">THREAT SCORE / 100</div></div>
         <div class="score-detail"><strong>${escapeHtml(result.riskTier || "Risk tier not provided")}</strong><span class="muted small">Model phishing probability: ${escapeHtml(probability)}</span><span class="muted small">${escapeHtml(currentEmail?.subject || "Scanned Gmail message")}</span></div>
       </div>
       <div>
-        <h2 class="section-title">◈ &nbsp; ANALYSIS EXPLANATION</h2>
+        <h2 class="section-title">ANALYSIS EXPLANATION</h2>
         <div class="stack" style="margin-top:9px">${explanationCards}</div>
       </div>
       <div class="notice ${result.saved ? "success" : ""}">${saveNotice}</div>
       <button class="button button-primary" id="scan-another" type="button">SCAN ANOTHER EMAIL</button>
-      <button class="text-button small" id="history-link" type="button">Open Threat History ↗</button>
-    </section>`, "ANALYSIS COMPLETE");
+      <button class="text-button small" id="history-link" type="button">Open Threat History</button>
+    </section>`);
   app.querySelector("#profile-button").addEventListener("click", showProfile);
   app.querySelector("#scan-another").addEventListener("click", () => showReady());
-  app.querySelector("#history-link").addEventListener("click", () => {
-    chrome.tabs.create({ url: `${session.webAppUrl}/app/threat-history` });
+  app.querySelector("#history-link").addEventListener("click", (event) => {
+    openAuthenticatedWebPage("/app/threat-history", event.currentTarget);
   });
 }
 
 function showProfile() {
-  if (view !== "profile" && view !== "settings") profileReturnView = view;
+  if (view !== "profile") profileReturnView = view;
   view = "profile";
   const user = session.user || {};
   const initials = (user.fullName || user.email || "B").trim().charAt(0).toUpperCase();
   shell(`
-    ${header(`<button class="icon-button" id="back-button" aria-label="Back">‹</button>`)}
+    ${header(`<button class="icon-button profile-back" id="back-button" aria-label="Back to scan">‹</button>`)}
     <section class="content">
       <div class="drawer-profile">
         <div class="avatar">${escapeHtml(initials)}</div>
         <h1>${escapeHtml(user.fullName || "BANTAI User")}</h1>
         <div class="muted">${escapeHtml(user.email || "")}</div>
-        <div style="margin-top:12px"><span class="pill">${escapeHtml(user.role || "ACCOUNT")}</span></div>
       </div>
       <div class="eyebrow">BANTAI ACCOUNT</div>
       <nav class="nav-list" aria-label="BANTAI account pages">
-        <a class="nav-link" href="${escapeHtml(session.webAppUrl)}/app/dashboard" target="_blank">System Overview Dashboard <span>↗</span></a>
-        <a class="nav-link" href="${escapeHtml(session.webAppUrl)}/app/threat-history" target="_blank">Threat History &amp; Audit Logs <span>↗</span></a>
-        <a class="nav-link" href="${escapeHtml(session.webAppUrl)}/app/settings" target="_blank">System Settings &amp; Preferences <span>↗</span></a>
+        <button class="nav-link" type="button" data-web-path="/app/dashboard">System Overview Dashboard</button>
+        <button class="nav-link" type="button" data-web-path="/app/threat-history">Threat History &amp; Audit Logs</button>
+        <button class="nav-link" type="button" data-web-path="/app/settings">System Settings &amp; Preferences</button>
       </nav>
-      <button class="button button-quiet" id="settings-button" type="button">Extension connection settings</button>
       <button class="button button-danger" id="logout-button" type="button" style="margin-top:12px">SIGN OUT OF EXTENSION</button>
-    </section>`, "SESSION SECURE");
+    </section>`);
+  app.querySelectorAll("[data-web-path]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      openAuthenticatedWebPage(button.dataset.webPath, event.currentTarget);
+    });
+  });
   app.querySelector("#back-button").addEventListener("click", () => {
     if (profileReturnView === "result" && currentResult) showResult();
     else showReady();
   });
-  app.querySelector("#settings-button").addEventListener("click", showSettings);
   app.querySelector("#logout-button").addEventListener("click", logout);
-}
-
-function showSettings(error = "") {
-  view = "settings";
-  shell(`
-    ${header(`<button class="icon-button" id="back-button" aria-label="Back">‹</button>`)}
-    <section class="content">
-      <h1 style="font-size:19px;margin:3px 0 7px">Connection settings</h1>
-      <p class="muted small">Choose your BANTAI API server. A permission prompt appears if the server is not the local default.</p>
-      ${error ? `<div class="notice error" role="alert">${escapeHtml(error)}</div>` : ""}
-      <form class="form" id="settings-form">
-        <div class="field"><label for="api-base">API base URL</label><input id="api-base" name="apiBaseUrl" value="${escapeHtml(session.apiBaseUrl || DEFAULT_API_BASE_URL)}" required></div>
-        <div class="field"><label for="web-app">BANTAI web app URL</label><input id="web-app" name="webAppUrl" value="${escapeHtml(session.webAppUrl || DEFAULT_WEB_APP_URL)}" required></div>
-        <button class="button button-primary" type="submit">SAVE CONNECTION</button>
-      </form>
-      <p class="privacy">Use HTTPS for remote servers. The extension requests access only to the server host you enter. Never use an untrusted API endpoint.</p>
-    </section>`, "SETTINGS");
-  app.querySelector("#back-button").addEventListener("click", showProfile);
-  app.querySelector("#settings-form").addEventListener("submit", saveSettings);
-}
-
-async function saveSettings(event) {
-  event.preventDefault();
-  const form = new FormData(event.currentTarget);
-  const apiBaseUrl = String(form.get("apiBaseUrl")).trim().replace(/\/+$/, "");
-  const webAppUrl = String(form.get("webAppUrl")).trim().replace(/\/+$/, "");
-  let apiUrl;
-  let webUrl;
-  try {
-    apiUrl = new URL(apiBaseUrl);
-    webUrl = new URL(webAppUrl);
-    if (!["http:", "https:"].includes(apiUrl.protocol) || !["http:", "https:"].includes(webUrl.protocol)) {
-      throw new Error("Addresses must use HTTP or HTTPS.");
-    }
-    if (apiUrl.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(apiUrl.hostname)) {
-      throw new Error("Use HTTPS for non-local BANTAI servers.");
-    }
-    if (!/\/api\/v1$/i.test(apiUrl.pathname.replace(/\/+$/, ""))) {
-      throw new Error("The API address must end with /api/v1.");
-    }
-    if (webUrl.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(webUrl.hostname)) {
-      throw new Error("Use HTTPS for the remote web app.");
-    }
-  } catch (error) {
-    showSettings(error.message || "Enter valid API and web app URLs.");
-    return;
-  }
-
-  const originPattern = `${apiUrl.origin}/*`;
-  const hasPermission = await chrome.permissions.contains({ origins: [originPattern] });
-  if (!hasPermission) {
-    const granted = await chrome.permissions.request({ origins: [originPattern] });
-    if (!granted) {
-      showSettings("The extension needs permission to contact that BANTAI API host.");
-      return;
-    }
-  }
-  const saved = await send({ type: "bantai:save-settings", apiBaseUrl, webAppUrl });
-  if (!saved.ok) {
-    showSettings(saved.error || "Could not save connection settings.");
-    return;
-  }
-  session.apiBaseUrl = apiBaseUrl;
-  session.webAppUrl = webAppUrl;
-  await showProfile();
 }
 
 async function logout() {
@@ -442,14 +623,15 @@ async function logout() {
   session.user = null;
   currentEmail = null;
   currentResult = null;
-  authMode = "login";
+  authStep = "login";
+  resetAuthorization = null;
   showAuth();
 }
 
 async function initialize() {
   session = await send({ type: "bantai:get-session" });
   if (session.error) {
-    shell(`${header()}<section class="content"><div class="notice error">${escapeHtml(session.error)}</div></section>`, "EXTENSION ERROR");
+    shell(`${header()}<section class="content"><div class="notice error">${escapeHtml(session.error)}</div></section>`);
     return;
   }
   session.apiBaseUrl ||= DEFAULT_API_BASE_URL;

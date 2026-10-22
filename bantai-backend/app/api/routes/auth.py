@@ -159,7 +159,7 @@ class GooglePasswordSetupBody(BaseModel):
         return self
 
 
-class GoogleTicketBody(BaseModel):
+class LoginTicketBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ticket: Annotated[str, StringConstraints(min_length=32, max_length=128)]
 
@@ -793,8 +793,13 @@ def _google_is_configured(settings: Settings) -> bool:
     )
 
 
-def _google_error_redirect(settings: Settings, code: str) -> RedirectResponse:
-    url = f"{settings.frontend_base_url.rstrip('/')}/login?{urlencode({'error': code})}"
+def _google_error_redirect(
+    settings: Settings,
+    code: str,
+    extension_redirect_uri: str | None = None,
+) -> RedirectResponse:
+    target = extension_redirect_uri or f"{settings.frontend_base_url.rstrip('/')}/login"
+    url = f"{target}?{urlencode({'error': code})}"
     return RedirectResponse(
         url,
         status_code=303,
@@ -803,10 +808,23 @@ def _google_error_redirect(settings: Settings, code: str) -> RedirectResponse:
 
 
 @router.get("/google/start", name="google_start")
-def google_start(request: Request, db: Session = Depends(get_db)):
+def google_start(
+    request: Request,
+    extension_redirect_uri: Annotated[str | None, Field(max_length=256)] = None,
+    db: Session = Depends(get_db),
+):
     settings = get_settings()
     if not _google_is_configured(settings):
         return _google_error_redirect(settings, "google_login_unavailable")
+    if extension_redirect_uri is not None:
+        extension_id = settings.extension_id
+        expected_redirect_uri = (
+            f"https://{extension_id}.chromiumapp.org/oauth2"
+            if extension_id and re.fullmatch(r"[a-p]{32}", extension_id)
+            else None
+        )
+        if extension_redirect_uri != expected_redirect_uri:
+            return _google_error_redirect(settings, "google_extension_not_configured")
     state = new_token()
     nonce = new_token()
     now = _now()
@@ -814,6 +832,7 @@ def google_start(request: Request, db: Session = Depends(get_db)):
         OAuthState(
             state_hash=token_hash(state),
             nonce_hash=token_hash(nonce),
+            extension_redirect_uri=extension_redirect_uri,
             expires_at=_timestamp(now + timedelta(minutes=OAUTH_STATE_TTL_MINUTES)),
         )
     )
@@ -824,6 +843,7 @@ def google_start(request: Request, db: Session = Depends(get_db)):
             "redirect_uri": settings.google_redirect_uri,
             "response_type": "code",
             "scope": "openid email profile",
+            "prompt": "select_account",
             "state": state,
             "nonce": nonce,
         }
@@ -984,7 +1004,9 @@ def google_callback(
         return _google_error_redirect(settings, "google_state_invalid")
     db.commit()
     if error or not code:
-        return _google_error_redirect(settings, "google_sign_in_cancelled")
+        return _google_error_redirect(
+            settings, "google_sign_in_cancelled", state_record.extension_redirect_uri
+        )
     try:
         claims = _google_claims(code, state_record.nonce_hash, settings)
         now = _now()
@@ -1001,7 +1023,9 @@ def google_callback(
     except (requests.RequestException, GoogleAuthError, ValueError) as exc:
         db.rollback()
         logger.warning("Google sign-in failed (%s)", type(exc).__name__)
-        return _google_error_redirect(settings, "google_sign_in_failed")
+        return _google_error_redirect(
+            settings, "google_sign_in_failed", state_record.extension_redirect_uri
+        )
     except HTTPException as exc:
         db.rollback()
         code_name = (
@@ -1009,15 +1033,17 @@ def google_callback(
             if isinstance(exc.detail, dict)
             else "google_sign_in_failed"
         )
-        return _google_error_redirect(settings, str(code_name))
+        return _google_error_redirect(
+            settings, str(code_name), state_record.extension_redirect_uri
+        )
     except IntegrityError:
         db.rollback()
         return _google_error_redirect(settings, "google_account_link_required")
 
-    url = (
-        f"{settings.frontend_base_url.rstrip('/')}/login?"
-        f"{urlencode({'oauth_ticket': ticket})}"
+    target = state_record.extension_redirect_uri or (
+        f"{settings.frontend_base_url.rstrip('/')}/login"
     )
+    url = f"{target}?{urlencode({'oauth_ticket': ticket})}"
     return RedirectResponse(
         url,
         status_code=303,
@@ -1027,10 +1053,16 @@ def google_callback(
 
 @router.post("/google/exchange")
 def exchange_google_ticket(
-    body: GoogleTicketBody,
+    body: LoginTicketBody,
     request: Request,
     db: Session = Depends(get_db),
 ):
+    if body.ticket.startswith("web_"):
+        raise _error(
+            "invalid_oauth_ticket",
+            "Google sign-in has expired. Please try again.",
+            400,
+        )
     now = _now()
     now_text = _timestamp(now)
     claim = db.execute(
@@ -1062,6 +1094,94 @@ def exchange_google_ticket(
             "Google sign-in has expired. Please try again.",
             400,
         )
+    policy = _load_policy(db)
+    stamp = auth_policy.iso(now)
+    user.last_login_at = stamp
+    user.updated_at = stamp
+    token, expires = _issue_session(db, user, request, policy)
+    _audit(db, request, user.user_id, "LOGIN_SUCCESS", 200)
+    db.commit()
+    return {
+        "accessToken": token,
+        "tokenType": "bearer",
+        "expiresAt": expires,
+        "user": _user_json(user),
+    }
+
+
+@router.post("/web-handoff")
+def create_web_handoff(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise _error("invalid_token", "The session is invalid.", 401)
+
+    now = _now()
+    now_text = _timestamp(now)
+    db.execute(
+        delete(OAuthLoginTicket).where(OAuthLoginTicket.expires_at <= now_text)
+    )
+    ticket = f"web_{new_token()}"
+    expires = _timestamp(now + timedelta(minutes=OAUTH_TICKET_TTL_MINUTES))
+    db.add(
+        OAuthLoginTicket(
+            ticket_hash=token_hash(ticket),
+            user_id=user.user_id,
+            expires_at=expires,
+        )
+    )
+    db.commit()
+    return {"ticket": ticket, "expiresAt": expires}
+
+
+@router.post("/web-handoff/exchange")
+def exchange_web_handoff(
+    body: LoginTicketBody,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not body.ticket.startswith("web_"):
+        raise _error(
+            "invalid_web_handoff",
+            "This sign-in link has expired. Open the page from the BANTAI extension again.",
+            400,
+        )
+
+    now = _now()
+    now_text = _timestamp(now)
+    claim = db.execute(
+        update(OAuthLoginTicket)
+        .where(
+            OAuthLoginTicket.ticket_hash == token_hash(body.ticket),
+            OAuthLoginTicket.consumed_at.is_(None),
+            OAuthLoginTicket.expires_at > now_text,
+        )
+        .values(consumed_at=now_text)
+    )
+    if claim.rowcount != 1:
+        db.rollback()
+        raise _error(
+            "invalid_web_handoff",
+            "This sign-in link has expired. Open the page from the BANTAI extension again.",
+            400,
+        )
+
+    ticket = db.scalar(
+        select(OAuthLoginTicket).where(
+            OAuthLoginTicket.ticket_hash == token_hash(body.ticket)
+        )
+    )
+    user = db.get(User, ticket.user_id) if ticket else None
+    if user is None or not user.is_active:
+        db.rollback()
+        raise _error(
+            "invalid_web_handoff",
+            "This sign-in link has expired. Open the page from the BANTAI extension again.",
+            400,
+        )
+
     policy = _load_policy(db)
     stamp = auth_policy.iso(now)
     user.last_login_at = stamp

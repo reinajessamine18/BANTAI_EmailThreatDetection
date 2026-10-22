@@ -257,3 +257,80 @@ def test_expired_session_is_rejected(monkeypatch):
         conn.commit()
         conn.close()
         assert client.get(f"{API}/auth/me", headers=bearer(token)).status_code == 401
+
+
+def test_web_handoff_issues_a_single_use_session_for_the_same_user(monkeypatch):
+    with make_client(monkeypatch) as client:
+        original = register(client)
+        original_user_id = original.json()["user"]["userId"]
+        original_token = original.json()["accessToken"]
+        created = client.post(
+            f"{API}/auth/web-handoff",
+            headers=bearer(original_token),
+        )
+        assert created.status_code == 200
+        ticket = created.json()["ticket"]
+        assert ticket.startswith("web_")
+        [(stored_hash,)] = db_rows("SELECT ticket_hash FROM oauth_login_tickets")
+        assert stored_hash != ticket
+
+        google_exchange = client.post(
+            f"{API}/auth/google/exchange",
+            json={"ticket": ticket},
+        )
+        exchanged = client.post(
+            f"{API}/auth/web-handoff/exchange",
+            json={"ticket": ticket},
+        )
+        replay = client.post(
+            f"{API}/auth/web-handoff/exchange",
+            json={"ticket": ticket},
+        )
+        exchanged_token = exchanged.json()["accessToken"]
+        me = client.get(
+            f"{API}/auth/me",
+            headers=bearer(exchanged_token),
+        )
+
+    assert google_exchange.status_code == 400
+    assert google_exchange.json()["detail"]["code"] == "invalid_oauth_ticket"
+    assert exchanged.status_code == 200
+    assert me.status_code == 200
+    assert me.json()["user"]["userId"] == original_user_id
+    assert replay.status_code == 400
+    assert replay.json()["detail"]["code"] == "invalid_web_handoff"
+    assert db_rows("SELECT COUNT(*) FROM user_sessions") == [(2,)]
+
+
+def test_web_handoff_requires_a_valid_unexpired_ticket_and_signed_in_user(monkeypatch):
+    with make_client(monkeypatch) as client:
+        guest_request = client.post(f"{API}/auth/web-handoff")
+        assert guest_request.status_code == 401
+
+        original = register(client)
+        token = original.json()["accessToken"]
+        created = client.post(
+            f"{API}/auth/web-handoff",
+            headers=bearer(token),
+        )
+        ticket = created.json()["ticket"]
+        conn = sqlite3.connect(get_settings().database_path)
+        conn.execute(
+            "UPDATE oauth_login_tickets SET expires_at = '2020-01-01T00:00:00Z'"
+        )
+        conn.commit()
+        conn.close()
+        expired = client.post(
+            f"{API}/auth/web-handoff/exchange",
+            json={"ticket": ticket},
+        )
+
+        wrong_kind = client.post(
+            f"{API}/auth/web-handoff/exchange",
+            json={"ticket": "x" * 40},
+        )
+
+    assert expired.status_code == 400
+    assert expired.json()["detail"]["code"] == "invalid_web_handoff"
+    assert wrong_kind.status_code == 400
+    assert wrong_kind.json()["detail"]["code"] == "invalid_web_handoff"

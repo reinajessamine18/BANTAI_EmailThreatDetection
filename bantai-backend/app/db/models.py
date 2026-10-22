@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models mirroring bantai-database/schema.sql (schema version 11).
+"""SQLAlchemy ORM models mirroring bantai-database/schema.sql (schema version 12).
 
 IMPORTANT: the SQL files are the source of truth. These classes only *describe*
 existing tables for querying. Never call `Base.metadata.create_all()`: it would
@@ -112,6 +112,7 @@ class OAuthState(Base):
     state_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     state_hash: Mapped[str] = mapped_column(Text)
     nonce_hash: Mapped[str] = mapped_column(Text)
+    extension_redirect_uri: Mapped[Optional[str]] = mapped_column(Text)
     expires_at: Mapped[str] = mapped_column(Text)
     consumed_at: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, server_default=_NOW)

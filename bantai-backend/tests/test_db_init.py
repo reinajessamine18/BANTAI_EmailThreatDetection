@@ -148,7 +148,7 @@ def test_revision_two_database_migrates_without_losing_users(tmp_path):
 
     result = init_db(db, SQL_DIR, None)
     assert not result.created
-    assert _one(db, "PRAGMA user_version")[0] == 11
+    assert _one(db, "PRAGMA user_version")[0] == 12
     assert _one(db, "SELECT email FROM users WHERE user_id = 1")[0] == "a@example.com"
     assert _one(db, "SELECT auto_save_scan_logs FROM user_settings WHERE user_id = 1")[0] == 1
     auto_save_column = next(
@@ -228,8 +228,8 @@ def test_google_sso_version_nine_database_migrates_without_losing_records(tmp_pa
 
     result = init_db(db, SQL_DIR, None)
 
-    assert not result.created and result.schema_version == 11
-    assert _one(db, "PRAGMA user_version")[0] == 11
+    assert not result.created and result.schema_version == 12
+    assert _one(db, "PRAGMA user_version")[0] == 12
     assert _one(db, "SELECT email, auth_provider, password_hash FROM users WHERE user_id = 1") == (
         "google@example.com", "google", None
     )

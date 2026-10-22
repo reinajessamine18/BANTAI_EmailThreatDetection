@@ -94,6 +94,7 @@ const FRIENDLY = {
   google_login_unavailable: "Google sign-in is not configured on the server.",
   google_account_link_required: "Sign in to the existing account before linking Google.",
   invalid_oauth_ticket: "Google sign-in expired. Please try again.",
+  invalid_web_handoff: "This sign-in link expired. Open the page from the BANTAI extension again.",
   google_state_invalid: "Google sign-in could not be verified. Please try again.",
   google_sign_in_failed: "Google sign-in could not be completed. Please try again.",
   google_sign_in_cancelled: "Google sign-in was cancelled.",
@@ -183,6 +184,14 @@ export async function login({ identifier, email, password }) {
 
 export async function exchangeGoogleTicket(ticket) {
   const data = await json("/auth/google/exchange", {
+    method: "POST", auth: false, body: { ticket },
+  });
+  setToken(data.accessToken);
+  return data.user;
+}
+
+export async function exchangeWebHandoffTicket(ticket) {
+  const data = await json("/auth/web-handoff/exchange", {
     method: "POST", auth: false, body: { ticket },
   });
   setToken(data.accessToken);

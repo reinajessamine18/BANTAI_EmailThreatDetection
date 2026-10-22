@@ -28,6 +28,7 @@ def configure_google(monkeypatch):
         "GOOGLE_REDIRECT_URI",
         "http://localhost:8000/api/v1/auth/google/callback",
     )
+    monkeypatch.setenv("BANTAI_EXTENSION_ID", "abcdefghijklmnopabcdefghijklmnop")
     get_settings.cache_clear()
 
 
@@ -45,11 +46,12 @@ def claims(**overrides):
     }
 
 
-def begin_google_login(client):
-    response = client.get(GOOGLE_START, follow_redirects=False)
+def begin_google_login(client, **params):
+    response = client.get(GOOGLE_START, params=params, follow_redirects=False)
     assert response.status_code == 302
     redirect = urlparse(response.headers["location"])
     query = parse_qs(redirect.query)
+    assert query["prompt"] == ["select_account"]
     return query["state"][0], query["nonce"][0]
 
 
@@ -90,6 +92,35 @@ def test_google_callback_reuses_subject_and_ticket_is_single_use(monkeypatch):
     assert login.json()["user"]["userId"] == second_login.json()["user"]["userId"]
     assert db_rows("SELECT COUNT(*) FROM users") == [(1,)]
     assert db_rows("SELECT COUNT(*) FROM user_sessions") == [(2,)]
+
+
+def test_google_extension_return_is_allowlisted_and_bound_to_state(monkeypatch):
+    configure_google(monkeypatch)
+    extension_uri = "https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/oauth2"
+    monkeypatch.setattr(
+        auth_routes,
+        "_google_claims",
+        lambda _code, _nonce_hash, _settings: claims(),
+    )
+    with make_client(monkeypatch) as client:
+        rejected = client.get(
+            GOOGLE_START,
+            params={"extension_redirect_uri": "https://attacker.example/oauth2"},
+            follow_redirects=False,
+        )
+        state, _nonce = begin_google_login(
+            client, extension_redirect_uri=extension_uri
+        )
+        result = callback(client, state)
+
+    assert rejected.status_code == 303
+    assert parse_qs(urlparse(rejected.headers["location"]).query) == {
+        "error": ["google_extension_not_configured"]
+    }
+    assert result.status_code == 303
+    redirect = urlparse(result.headers["location"])
+    assert f"{redirect.scheme}://{redirect.netloc}{redirect.path}" == extension_uri
+    assert len(parse_qs(redirect.query)["oauth_ticket"][0]) >= 32
 
 
 def test_unconfigured_google_login_returns_to_frontend_with_safe_error(monkeypatch):

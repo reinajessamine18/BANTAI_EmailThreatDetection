@@ -30,7 +30,7 @@ function apiError(status, data) {
     return {
       status,
       code: "validation_error",
-      message: "The submitted email could not be validated. Check its contents and try again.",
+      message: "Some submitted fields are invalid. Check them and try again.",
     };
   }
   return {
