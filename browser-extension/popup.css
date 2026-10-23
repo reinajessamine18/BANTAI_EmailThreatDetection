@@ -17,9 +17,9 @@
 * { box-sizing: border-box; }
 
 body {
-  width: 545px;
-  min-height: 620px;
-  max-height: 780px;
+  width: 360px;
+  height: 600px;
+  max-height: 600px;
   margin: 0;
   overflow-y: auto;
   background:
@@ -33,16 +33,16 @@ body {
 button, input { font: inherit; }
 button { cursor: pointer; }
 
-.shell { min-height: 100vh; display: flex; flex-direction: column; }
+.shell { min-height: 100%; display: flex; flex-direction: column; }
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 60px;
-  padding: 0 16px;
+  min-height: 48px;
+  padding: 0 12px;
   border-bottom: 1px solid #1a1b22;
 }
-.brand { color: #fff; font-size: 21px; font-style: italic; font-weight: 900; letter-spacing: -.04em; }
+.brand { color: #fff; font-size: 19px; font-style: italic; font-weight: 900; letter-spacing: -.04em; }
 .brand span, .auth-logo span { color: #a3e635; }
 .icon-button, .text-button {
   border: 0;
@@ -52,6 +52,24 @@ button { cursor: pointer; }
 .icon-button { padding: 8px; font-size: 17px; }
 .topbar .brand { color: #fff; }
 .icon-button:hover, .text-button:hover { color: var(--lime); }
+.profile-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  place-items: center;
+  border: 1px solid #526b12;
+  border-radius: 50%;
+  background: #171b12;
+  color: var(--lime);
+}
+.profile-button:hover, .profile-button:focus-visible {
+  border-color: var(--lime);
+  background: #232b12;
+  color: #d8ff62;
+}
+.profile-button:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.profile-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .profile-back {
   display: grid;
   width: 38px;
@@ -63,7 +81,7 @@ button { cursor: pointer; }
   font-size: 28px;
   line-height: 1;
 }
-.content { padding: 20px; }
+.content { padding: 14px; }
 .eyebrow {
   color: var(--lime);
   font-size: 10px;
@@ -86,8 +104,8 @@ button { cursor: pointer; }
 .message-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 16px; color: var(--muted); font-size: 10px; }
 .button {
   width: 100%;
-  min-height: 60px;
-  padding: 14px 24px;
+  min-height: 46px;
+  padding: 10px 16px;
   border: 1px solid #3f3f46;
   border-radius: 9px;
   background: var(--panel);
@@ -113,7 +131,7 @@ button { cursor: pointer; }
   align-items: center;
   justify-content: center;
   gap: 12px;
-  min-height: 60px;
+  min-height: 46px;
   border-color: #3f3f46;
   background: rgb(24 24 27 / 90%);
   color: #fff;
@@ -131,8 +149,8 @@ button { cursor: pointer; }
 .forgot-link:hover { color: #bef264; }
 .field input {
   width: 100%;
-  height: 62px;
-  padding: 0 20px;
+  height: 46px;
+  padding: 0 14px;
   border: 1px solid #27272a;
   border-radius: 11px;
   outline: none;
@@ -174,15 +192,15 @@ button { cursor: pointer; }
 .notice.error { border-color: rgb(255 67 75 / 42%); background: rgb(255 67 75 / 8%); color: #ff797e; }
 .notice.success { border-color: rgb(0 217 160 / 35%); color: var(--green); }
 .center { text-align: center; }
-.auth-screen { display: grid; min-height: 100vh; padding: 20px; place-items: center; }
-.auth-card { width: 100%; max-width: 510px; padding: 42px 36px; border: 1px solid rgb(39 39 42 / 90%); border-radius: 18px; background: rgb(0 0 0 / 88%); box-shadow: 0 25px 60px rgb(0 0 0 / 55%); }
-.auth-intro { margin: 0 0 34px; text-align: center; }
-.auth-logo { margin-bottom: 24px; color: #fff; font-size: 38px; font-style: italic; font-weight: 950; letter-spacing: -.055em; line-height: 1; }
-.auth-intro h1 { margin: 0; font-size: 28px; font-weight: 750; letter-spacing: -.02em; }
-.auth-intro p { margin: 12px 0 0; color: #71717a; font-size: 15px; line-height: 1.5; }
-.auth-feedback { margin: -12px 0 20px; }
-.auth-feedback .notice { padding: 16px; }
-.auth-options { display: grid; gap: 22px; margin-top: 22px; }
+.auth-screen { display: grid; min-height: 100%; padding: 12px; place-items: center; }
+.auth-card { width: 100%; max-width: 510px; padding: 24px 20px; border: 1px solid rgb(39 39 42 / 90%); border-radius: 14px; background: rgb(0 0 0 / 88%); box-shadow: 0 18px 40px rgb(0 0 0 / 45%); }
+.auth-intro { margin: 0 0 20px; text-align: center; }
+.auth-logo { margin-bottom: 14px; color: #fff; font-size: 30px; font-style: italic; font-weight: 950; letter-spacing: -.055em; line-height: 1; }
+.auth-intro h1 { margin: 0; font-size: 23px; font-weight: 750; letter-spacing: -.02em; }
+.auth-intro p { margin: 8px 0 0; color: #71717a; font-size: 13px; line-height: 1.5; }
+.auth-feedback { margin: -6px 0 14px; }
+.auth-feedback .notice { padding: 12px; }
+.auth-options { display: grid; gap: 14px; margin-top: 14px; }
 .signup-prompt { margin-top: 4px; text-align: center; }
 .signup-prompt p { margin: 0; color: #71717a; font-size: 13px; }
 .status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 12px; }
@@ -204,8 +222,8 @@ button { cursor: pointer; }
 .explanation-text { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 .link { color: var(--muted); text-decoration: none; }
 .link:hover { color: var(--lime); }
-.drawer-profile { padding: 20px 8px; text-align: center; }
-.avatar { display: grid; width: 64px; height: 64px; margin: 0 auto 10px; place-items: center; border: 2px solid var(--lime); border-radius: 50%; color: var(--lime); font-size: 25px; }
+.drawer-profile { padding: 14px 8px; text-align: center; }
+.avatar { display: grid; width: 54px; height: 54px; margin: 0 auto 10px; place-items: center; border: 2px solid var(--lime); border-radius: 50%; color: var(--lime); font-size: 22px; }
 .drawer-profile h1 { margin: 0 0 5px; font-size: 18px; }
 .nav-list { display: grid; gap: 8px; margin: 15px 0 19px; }
 .nav-link { display: flex; width: 100%; justify-content: space-between; align-items: center; padding: 13px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel-soft); color: var(--text); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }

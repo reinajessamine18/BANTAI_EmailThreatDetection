@@ -61,7 +61,7 @@ async function openAuthenticatedWebPage(path, trigger) {
       if (response?.error?.status === 401) {
         session.accessToken = null;
         session.user = null;
-        showAuth("Your BANTAI session expired. Sign in again to continue.");
+        showAuth("Your BANTAI session expired. Log in again to continue.");
         return;
       }
       throw new Error(
@@ -106,7 +106,7 @@ function showAuth(error = "", notice = "") {
   const login = authStep === "login";
   const reset = authStep.startsWith("reset-");
   const title = {
-    login: "Sign in",
+    login: "Log in",
     "reset-email": "Reset your password",
     "reset-verify": "Verify your reset code",
     "reset-password": "Choose a new password",
@@ -138,7 +138,7 @@ function showAuth(error = "", notice = "") {
           ${passwordInput("password", "password", "New password", "new-password", "At least 10 characters", true)}
           ${passwordInput("confirm-password", "confirmPassword", "Confirm new password", "new-password", "Confirm your password", true)}`;
   const submitLabel = {
-    login: "Sign In",
+    login: "Log In",
     "reset-email": "Send Reset Code",
     "reset-verify": "Verify Reset Code",
     "reset-password": "Save New Password",
@@ -146,8 +146,8 @@ function showAuth(error = "", notice = "") {
   const contextButtons = login
     ? `<div class="auth-divider"><span>OR</span></div>
        <button class="button button-google" type="button" id="google-login"><span aria-hidden="true" class="google-mark">G</span><span>Continue with Google</span></button>
-       <div class="signup-prompt"><p>Don't have a BANTAI account?</p>
-       <a class="auth-link" id="website-signup" target="_blank" rel="noopener noreferrer">Create an account</a></div>`
+       <div class="signup-prompt"><p>New to BANTAI?</p>
+       <a class="auth-link" id="website-signup" target="_blank" rel="noopener noreferrer">Create an account on our website</a></div>`
     : authStep === "reset-email"
       ? `<button class="text-button small" type="button" id="show-login">Back to log in</button>`
       : authStep === "reset-verify"
@@ -416,7 +416,7 @@ async function showReady(error = "") {
       await send({ type: "bantai:clear-session" });
       session.accessToken = null;
       session.user = null;
-      showAuth("Your BANTAI session expired. Sign in again to continue.");
+      showAuth("Your BANTAI session expired. Log in again to continue.");
     } else {
       showConnectionError(me.error?.message || "The BANTAI server is unavailable.");
     }
@@ -441,7 +441,7 @@ async function showReady(error = "") {
       </article>`;
 
   shell(`
-    ${header(`<button class="icon-button" id="profile-button" aria-label="Open profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.4 3.1-5.5 7-5.5s6.3 2.1 7 5.5"></path></svg></button>`)}
+    ${header(`<button class="icon-button profile-button" id="profile-button" type="button" aria-label="Open profile" title="Open profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.4 3.1-5.5 7-5.5s6.3 2.1 7 5.5"></path></svg></button>`)}
     <section class="content">
       <div class="status-row">
         <span class="account">${escapeHtml(user.fullName || user.email || "BANTAI ACCOUNT")}</span>
@@ -561,7 +561,7 @@ function showResult() {
     : "The scan was processed, but your account settings did not save it to Threat History.";
 
   shell(`
-    ${header(`<button class="icon-button" id="profile-button" aria-label="Open profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.4 3.1-5.5 7-5.5s6.3 2.1 7 5.5"></path></svg></button>`)}
+    ${header(`<button class="icon-button profile-button" id="profile-button" type="button" aria-label="Open profile" title="Open profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.4 3.1-5.5 7-5.5s6.3 2.1 7 5.5"></path></svg></button>`)}
     <section class="content stack">
       <div class="result-banner ${risk}">${labels[risk]}</div>
       <div class="card score-card">
@@ -646,7 +646,7 @@ async function initialize() {
       await send({ type: "bantai:clear-session" });
       session.accessToken = null;
       session.user = null;
-      showAuth("Your BANTAI session expired. Sign in again to continue.");
+      showAuth("Your BANTAI session expired. Log in again to continue.");
     } else {
       showConnectionError(me.error?.message || "The BANTAI server is unavailable.");
     }
