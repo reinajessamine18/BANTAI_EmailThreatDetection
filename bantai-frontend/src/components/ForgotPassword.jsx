@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import backgroundImage from "../assets/bgimg-login.png";
+import backgroundImage from "../assets/bantai-login.webp";
 import lockIcon from "../assets/lock-icon.png";
 import {
   friendlyError,

@@ -3,8 +3,14 @@
   "name": "BANTAI Email Threat Scanner",
   "version": "1.0.0",
   "description": "Scan the currently open Gmail message with BANTAI.",
+  "icons": {
+    "32": "BANTAI-logo.png"
+  },
   "action": {
     "default_title": "BANTAI Email Threat Scanner",
+    "default_icon": {
+      "32": "BANTAI-logo.png"
+    },
     "default_popup": "popup.html"
   },
   "background": {

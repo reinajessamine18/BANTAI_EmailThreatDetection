@@ -43,6 +43,9 @@ button { cursor: pointer; }
   border-bottom: 1px solid #1a1b22;
 }
 .brand, .auth-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   color: #fff;
   font-size: 1.5rem;
   font-style: italic;
@@ -50,7 +53,14 @@ button { cursor: pointer; }
   letter-spacing: -.025em;
   line-height: 2rem;
 }
-.brand span, .auth-logo span { color: #a3e635; }
+.brand-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-top: 12px;
+  transform: skewX(-12deg);
+  background: #a3e635;
+}
 .icon-button, .text-button {
   border: 0;
   background: transparent;
@@ -85,9 +95,8 @@ button { cursor: pointer; }
   place-items: center;
   border: 1px solid var(--border);
   border-radius: 50%;
-  font-size: 28px;
-  line-height: 1;
 }
+.profile-back svg { display: block; width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
 .content { padding: 14px; }
 .eyebrow {
   color: var(--lime);
@@ -146,7 +155,7 @@ button { cursor: pointer; }
   font-weight: 650;
 }
 .button-google:hover { border-color: #71717a; background: #27272a; }
-.google-mark { font-size: 18px; font-weight: 800; }
+.google-mark { font-size: 16px; font-weight: 700; line-height: 1; }
 .button-danger { border-color: rgb(255 67 75 / 35%); color: var(--red); }
 .form { display: grid; gap: 13px; margin-top: 16px; }
 .field { display: grid; gap: 10px; }
@@ -230,6 +239,7 @@ button { cursor: pointer; }
 .link { color: var(--muted); text-decoration: none; }
 .link:hover { color: var(--lime); }
 .drawer-profile { padding: 14px 8px; text-align: center; }
+.avatar-logo { display: block; width: 48px; height: 48px; margin: 0 auto 10px; object-fit: contain; }
 .avatar { display: grid; width: 54px; height: 54px; margin: 0 auto 10px; place-items: center; border: 2px solid var(--lime); border-radius: 50%; color: var(--lime); font-size: 22px; }
 .drawer-profile h1 { margin: 0 0 5px; font-size: 18px; }
 .nav-list { display: grid; gap: 8px; margin: 15px 0 19px; }

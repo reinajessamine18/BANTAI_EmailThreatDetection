@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 
-import backgroundImage from "../assets/bgimg-login.png";
+import backgroundImage from "../assets/bantai-login.webp";
 import lockIcon from "../assets/lock-icon.png";
 import {
   ApiError,

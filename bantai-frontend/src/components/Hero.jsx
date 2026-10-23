@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
-import backgroundImage from "../assets/BANTAI-background.png";
-import heroImage from "../assets/BANTAI-3D.png";
+import backgroundImage from "../assets/bantai-background.webp";
+import heroImage from "../assets/BANTAI-3D.webp";
 
 export default function Hero() {
   return (

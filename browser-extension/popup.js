@@ -46,7 +46,7 @@ function shell(content) {
 }
 
 function header(action = "") {
-  return `<header class="topbar"><div class="brand">BANTAI<span>.</span></div>${action}</header>`;
+  return `<header class="topbar"><div class="brand">BANTAI<span class="brand-dot" aria-hidden="true"></span></div>${action}</header>`;
 }
 
 function webAppPage(path) {
@@ -159,7 +159,7 @@ function showAuth(error = "", notice = "") {
       <div class="auth-card">
       <div class="auth-intro">
         <div class="auth-logo" aria-label="BANTAI">
-          BANTAI<span>.</span>
+          BANTAI<span class="brand-dot" aria-hidden="true"></span>
         </div>
         <h1>${title}</h1>
         <p>${reset ? "Securely recover access to your BANTAI account." : "Access the BANTAI threat intelligence platform."}</p>
@@ -596,12 +596,11 @@ function showProfile() {
   if (view !== "profile") profileReturnView = view;
   view = "profile";
   const user = session.user || {};
-  const initials = (user.fullName || user.email || "B").trim().charAt(0).toUpperCase();
   shell(`
-    ${header(`<button class="icon-button profile-back" id="back-button" aria-label="Back to scan">‹</button>`)}
+    ${header(`<button class="icon-button profile-back" id="back-button" aria-label="Back to scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 18-6-6 6-6"></path></svg></button>`)}
     <section class="content">
       <div class="drawer-profile">
-        <div class="avatar">${escapeHtml(initials)}</div>
+        <img class="avatar-logo" src="BANTAI-logo.png" alt="BANTAI logo">
         <h1>${escapeHtml(user.fullName || "BANTAI User")}</h1>
         <div class="muted">${escapeHtml(user.email || "")}</div>
       </div>
