@@ -7,9 +7,22 @@ INSERT INTO system_settings (setting_key, setting_value, description) VALUES
  ('risk_low_max',    '39', 'Highest threat score still classed as Low (Safe)'),
  ('risk_medium_max', '79', 'Highest threat score still classed as Medium (Suspicious); above this is Critical (Phishing)'),
  ('max_upload_bytes','5242880', 'Maximum accepted .eml size (5 MB)'),
- ('top_n_explanations','5', 'How many top SHAP contributors get a plain-language explanation');
+ ('top_n_explanations','5', 'How many top SHAP contributors get a plain-language explanation'),
+ -- [R2] Generic explanation text for SHAP words that have no entry in token_feature_map.
+ -- {token} is replaced with the word. Wording is deliberately non-causal.
+ ('insight_generic_phishing','The word "{token}" appears in this email and pushed the model''s estimate toward phishing.',
+  'Fallback explanation for a word that raised the phishing estimate'),
+ ('insight_generic_safe','The word "{token}" appears in this email and pushed the model''s estimate toward safe.',
+  'Fallback explanation for a word that lowered the phishing estimate'),
+ -- [R2] Authentication policy. ALL THREE ARE ASSUMED values, not research requirements.
+ ('session_ttl_hours','8','Session lifetime in hours (matches the demo sessions in sample_data.sql)'),
+ ('max_failed_logins','5','Failed password attempts before the account is temporarily locked'),
+ ('lockout_minutes','15','How long a locked account stays locked');
 
 -- Placeholder model row so scans can be recorded before the real model is trained.
+-- When the ML artifacts exist, the backend (app/db/init_db.py) registers the real baseline
+-- model with its recorded validation metrics and makes it the active one; this row stays,
+-- inactive, because the demo scans in sample_data.sql reference it.
 INSERT INTO model_versions (version_tag, model_artifact_path, scaler_artifact_path, is_active, notes)
 VALUES ('xgb-dev-0.0.0', 'models/xgb_model.bin', 'models/scaler.pkl', 1,
         'Placeholder. Replace with real metrics and paths after CRISP-DM Evaluation.');
@@ -89,3 +102,28 @@ INSERT INTO feature_definitions
 ('attachment_count','Attachment Count','text','count',
  'Number of attachments (names/types only; contents are not analyzed).','Security Tip','Unexpected Attachment',
  'Do not open unexpected attachments. Verify with the sender through a separate channel.');
+
+-- [R2] Features the current pipeline cannot compute are switched off so they are never
+-- presented as if they were measured:
+--   url_redirect_count : links are never fetched, so redirects are unknown
+--   sentiment_score    : no sentiment library is part of the approved tech stack
+--   html_to_text_ratio : not computed by the parser yet
+UPDATE feature_definitions SET is_active = 0
+ WHERE feature_key IN ('url_redirect_count','sentiment_score','html_to_text_ratio');
+
+-- [R2] Education mapping: SHAP word -> catalog feature (see schema.sql, token_feature_map).
+-- The word lists below are an IMPLEMENTATION CHOICE (a starter lexicon), not model output.
+-- The model may rank other words highest; those fall back to the generic text above.
+-- The same lists drive the urgency_keyword_count / credential_request_count indicators.
+WITH w(token) AS (VALUES
+  ('urgent'),('urgently'),('immediately'),('immediate'),('asap'),('suspended'),('suspend'),
+  ('expire'),('expires'),('expired'),('expiring'),('deadline'),('warning'),('alert'),
+  ('terminated'),('locked'),('restricted'),('unauthorized'),('compromised'))
+INSERT INTO token_feature_map (token, feature_id)
+SELECT w.token, f.feature_id FROM w JOIN feature_definitions f ON f.feature_key = 'urgency_keyword_count';
+
+WITH w(token) AS (VALUES
+  ('verify'),('verification'),('confirm'),('password'),('passwords'),('login'),('signin'),
+  ('credentials'),('username'),('pin'),('ssn'),('bank'),('billing'),('card'))
+INSERT INTO token_feature_map (token, feature_id)
+SELECT w.token, f.feature_id FROM w JOIN feature_definitions f ON f.feature_key = 'credential_request_count';

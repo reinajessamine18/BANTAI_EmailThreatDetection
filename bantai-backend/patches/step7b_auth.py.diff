@@ -1,0 +1,79 @@
+--- auth.py (your uploaded original)
++++ auth.py (Step 7b)
+@@ -11,6 +11,7 @@
+ from app.api.auth_security import hash_password, new_token, token_hash, verify_password
+ from app.api.deps import get_current_user, get_current_user_optional
+-from app.db.models import AuditLog, User, UserSession, UserSettings
++from app.db.models import AuditLog, SystemSetting, User, UserSession, UserSettings
+ from app.db.session import get_db
++from app.services import auth_policy  # [S7b] lockout + session length
+ 
+ router = APIRouter(prefix="/auth", tags=["Authentication"])
+@@ -60,7 +61,12 @@
+         user_agent=request.headers.get("user-agent", "")[:300] or None))
+ 
+-def _issue_session(db: Session, user: User, request: Request) -> tuple[str, str]:
++def _load_policy(db: Session) -> auth_policy.AuthPolicy:
++    # [S7b] lockout / session length come from system_settings (seed.sql) instead of being hardcoded
++    rows = db.execute(select(SystemSetting.setting_key, SystemSetting.setting_value)).all()
++    return auth_policy.policy_from_settings({key: value for key, value in rows})
++
++def _issue_session(db: Session, user: User, request: Request, policy: auth_policy.AuthPolicy) -> tuple[str, str]:
+     token = new_token()
+-    expires = (datetime.now(timezone.utc) + timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ")
++    expires = auth_policy.session_expiry(datetime.now(timezone.utc), policy)
+     db.add(UserSession(user_id=user.user_id, token_hash=token_hash(token),
+         ip_address=(request.client.host[:64] if request.client else None),
+@@ -70,4 +76,5 @@
+ @router.post("/register", status_code=201)
+ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
++    policy = _load_policy(db)
+     email = str(body.email).strip().lower()
+     if db.scalar(select(User.user_id).where(User.email == email)) is not None:
+@@ -77,5 +84,5 @@
+         db.add(user); db.flush()
+         db.add(UserSettings(user_id=user.user_id))
+-        token, expires = _issue_session(db, user, request)
++        token, expires = _issue_session(db, user, request, policy)
+         _audit(db, request, user.user_id, "USER_REGISTERED", 201)
+         db.commit(); db.refresh(user)
+@@ -90,17 +97,32 @@
+ @router.post("/login")
+ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
++    # [S7b] Brute-force lockout + equal timing. Every failure path (wrong password, unknown email,
++    # locked account) returns the SAME response and costs the same time, so neither is detectable.
++    policy = _load_policy(db)
++    now = datetime.now(timezone.utc)
+     email = str(body.email).strip().lower()
+     user = db.scalar(select(User).where(User.email == email))
+-    # Generic response avoids revealing whether an email exists.
+-    if user is None or user.auth_provider != "local" or not verify_password(body.password, user.password_hash):
++    usable = user is not None and user.auth_provider == "local"
++    locked = usable and auth_policy.is_locked(user.locked_until, auth_policy.iso(now))
++    if usable and not locked:
++        password_ok = verify_password(body.password, user.password_hash)
++    else:
++        auth_policy.dummy_verify(body.password)
++        password_ok = False
++    if not password_ok:
++        if usable and not locked:
++            user.failed_login_attempts, user.locked_until = auth_policy.register_failure(
++                user.failed_login_attempts or 0, policy, now)
+         _audit(db, request, user.user_id if user else None, "LOGIN_FAILED", 401)
+         db.commit()
+-        raise HTTPException(status_code=401, detail={"code":"invalid_credentials", "message":"Email or password is incorrect."}, headers={"WWW-Authenticate":"Bearer"})
++        raise HTTPException(status_code=401, detail={"code":"invalid_credentials", "message":"Email or password is incorrect, or the account is temporarily locked."}, headers={"WWW-Authenticate":"Bearer"})
+     if not user.is_active:
+         raise HTTPException(status_code=403, detail={"code":"inactive_account", "message":"This account is disabled."})
+-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+-    user.last_login_at = now
+-    user.updated_at = now
+-    token, expires = _issue_session(db, user, request)
++    stamp = auth_policy.iso(now)
++    user.failed_login_attempts = 0
++    user.locked_until = None
++    user.last_login_at = stamp
++    user.updated_at = stamp
++    token, expires = _issue_session(db, user, request, policy)
+     _audit(db, request, user.user_id, "LOGIN_SUCCESS", 200)
+     db.commit()

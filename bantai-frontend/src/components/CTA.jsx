@@ -20,8 +20,8 @@ export default function CTA() {
             </h2>
 
             <p className="mx-auto mt-5 max-w-2xl text-sm leading-6 text-zinc-500 sm:text-base">
-              Deploy an email security engine that doesn't just block threats,
-              it explains them. Upload your first .eml payload today.
+              Use the BANTAI browser extension to scan emails. Log in to review
+              your dashboard, threat history, and system settings.
             </p>
 
             <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">

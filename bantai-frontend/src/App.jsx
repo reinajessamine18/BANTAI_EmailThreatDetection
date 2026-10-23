@@ -16,14 +16,16 @@ import BackToTop from "./components/BackToTop";
 import Login from "./components/Login";
 import SignUp from "./components/SignUp";
 import ForgotPassword from "./components/ForgotPassword";
-import GuestAnalyzeEmail from "./components/GuestAnalyzeEmail";
+import ResetPassword from "./components/ResetPassword";
 
 import DashboardLayout from "./components/DashboardLayout";
-import AnalyzeEmail from "./components/AnalyzeEmail";
 
 import Dashboard from "./components/Dashboard";
 import ThreatHistory from "./components/ThreatHistory";
 import Settings from "./components/Settings";
+
+import RequireAuth from "./components/RequireAuth";
+import ScanDetail from "./components/ScanDetail"; //newly
 
 function LandingPage() {
   return (
@@ -56,16 +58,20 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Guest Email Scanner */}
-        <Route path="/analyze" element={<GuestAnalyzeEmail />} />
+        {/* Legacy scan links lead to login; scanning is available in the extension. */}
+        <Route path="/analyze" element={<Navigate to="/login" replace />} />
 
-        {/* Authenticated Application */}
-        <Route element={<DashboardLayout />}>
+        {/* Authenticated account application */}
+        <Route element={<RequireAuth />}>
+          <Route element={<DashboardLayout />}>
           <Route path="/app/dashboard" element={<Dashboard />} />
-          <Route path="/app/analyze" element={<AnalyzeEmail />} />
+          <Route path="/app/analyze" element={<Navigate to="/app/dashboard" replace />} />
           <Route path="/app/threat-history" element={<ThreatHistory />} />
+          <Route path="/app/threat-history/:scanId" element={<ScanDetail />} />
           <Route path="/app/settings" element={<Settings />} />
+          </Route>
         </Route>
 
         {/* Unknown routes */}

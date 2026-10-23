@@ -16,3 +16,7 @@ machine-learning/artifacts/baseline/
 # Python generated files
 __pycache__/
 *.py[cod]
+.venv/
+
+# Local database files
+bantai.db

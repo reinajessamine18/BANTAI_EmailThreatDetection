@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "BANTAI Email Threat Scanner",
+  "version": "1.0.0",
+  "description": "Scan the currently open Gmail message with BANTAI.",
+  "icons": {
+    "32": "BANTAI-logo.png"
+  },
+  "action": {
+    "default_title": "BANTAI Email Threat Scanner",
+    "default_icon": {
+      "32": "BANTAI-logo.png"
+    },
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "activeTab",
+    "identity",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
+}

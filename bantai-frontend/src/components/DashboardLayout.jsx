@@ -1,32 +1,40 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   House,
-  Search,
   Clock,
   Settings,
 } from "lucide-react";
+import { getProfile, logout } from "../api/client";
 
 function DashboardLayout() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
-  const logoutDialogRef = useRef(null);
+  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const loadUser = () => {
-    const storedUser = localStorage.getItem("bantaiUser");
+  const loadUser = async () => {
+  try {
+    setUser(await getProfile());
+  } catch {
+    setUser(null);
+  }
+};
 
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        setUser(null);
-      }
-    } else {
-      setUser(null);
-    }
-  };
+  // const loadUser = () => {
+  //   const storedUser = localStorage.getItem("bantaiUser");
+
+  //   if (storedUser) {
+  //     try {
+  //       setUser(JSON.parse(storedUser));
+  //     } catch {
+  //       setUser(null);
+  //     }
+  //   } else {
+  //     setUser(null);
+  //   }
+  // };
 
   useEffect(() => {
     loadUser();
@@ -38,37 +46,38 @@ function DashboardLayout() {
     };
   }, []);
 
-  const handleLogout = () => {
-    setIsLogoutDialogOpen(true);
-  };
-
   useEffect(() => {
-    if (isLogoutDialogOpen) {
-      logoutDialogRef.current?.showModal();
-    }
-  }, [isLogoutDialogOpen]);
+    const handleUnsavedChanges = (event) => {
+      setHasUnsavedChanges(event.detail);
+    };
 
-  const cancelLogout = () => {
-    logoutDialogRef.current?.close();
-    setIsLogoutDialogOpen(false);
-  };
+    window.addEventListener("bantai:unsaved-changes", handleUnsavedChanges);
 
-  const confirmLogout = () => {
-    localStorage.removeItem("bantaiAuthenticated");
-    cancelLogout();
+    return () => {
+      window.removeEventListener("bantai:unsaved-changes", handleUnsavedChanges);
+    };
+  }, []);
+
+  const confirmLogout = async () => {
+    setIsLoggingOut(true);
+    await logout();
     navigate("/");
   };
+
+  const closeLogoutConfirmation = () => {
+    if (!isLoggingOut) setShowLogoutConfirmation(false);
+  };
+
+  // const handleLogout = () => {
+  //   localStorage.removeItem("bantaiAuthenticated");
+  //   navigate("/");
+  // };
 
   const navigation = [
     {
       name: "Dashboard",
       path: "/app/dashboard",
       icon: House,
-    },
-    {
-      name: "Analyze Email",
-      path: "/app/analyze",
-      icon: Search,
     },
     {
       name: "Threat History",
@@ -82,8 +91,8 @@ function DashboardLayout() {
     },
   ];
 
-  const displayName = user?.name || "BANTAI User";
-  const email = user?.email || "BANTAI Account";
+  const displayName = user?.fullName || "Account";
+  const email = user?.email || "";
   const profilePicture = user?.profilePicture || "";
 
   const initials = displayName
@@ -140,7 +149,12 @@ function DashboardLayout() {
 
         {/* Account */}
         <div className="border-t border-zinc-800 p-4">
-          <div className="mb-4 flex items-center gap-3 rounded-lg bg-zinc-900/70 p-3">
+          <button
+            type="button"
+            onClick={() => navigate("/app/settings")}
+            aria-label={`Open account profile settings for ${displayName}`}
+            className="mb-4 flex w-full items-center gap-3 rounded-lg bg-zinc-900/70 p-3 text-left transition hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
+          >
             {profilePicture ? (
               <img
                 src={profilePicture}
@@ -162,11 +176,11 @@ function DashboardLayout() {
                 {email}
               </p>
             </div>
-          </div>
+          </button>
 
           <button
             type="button"
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirmation(true)}
             className="flex w-full items-center rounded-lg px-3 py-3 text-sm font-medium text-zinc-500 transition hover:bg-red-500/10 hover:text-red-400"
           >
             <span>Log Out</span>
@@ -174,57 +188,54 @@ function DashboardLayout() {
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="ml-64 min-h-screen bg-black">
-        <div className="px-8 py-8">
-          <Outlet context={{ setHasUnsavedChanges }} />
-        </div>
-      </main>
-
-      {isLogoutDialogOpen && (
-        <dialog
-          ref={logoutDialogRef}
-          onClose={() => setIsLogoutDialogOpen(false)}
-          aria-labelledby="logout-dialog-title"
-          aria-describedby="logout-dialog-description"
-          className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-0 text-white shadow-[0_0_60px_rgba(0,0,0,0.6)] backdrop:bg-black/80 backdrop:backdrop-blur-sm"
-        >
-          <div className="border-b border-zinc-800 px-6 py-5">
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-lime-400">
-              BANTAI Account
-            </p>
-            <h2 id="logout-dialog-title" className="text-xl font-bold">
-              {hasUnsavedChanges ? "Unsaved changes" : "Log out?"}
+      {showLogoutConfirmation && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-dialog-title"
+            aria-describedby="logout-dialog-description"
+            className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl"
+          >
+            <h2 id="logout-dialog-title" className="text-lg font-bold text-white">
+              Log out?
             </h2>
-          </div>
-
-          <div className="px-6 py-5">
-            <p id="logout-dialog-description" className="text-sm leading-6 text-zinc-400">
+            <p
+              id="logout-dialog-description"
+              className="mt-3 text-sm leading-6 text-zinc-400"
+            >
               {hasUnsavedChanges
-                ? "You have unsaved changes. If you log out now, they will not be saved and will be lost. Are you sure you want to continue?"
-                : "Are you sure you want to log out of your account?"}
+                ? "You have unsaved profile or settings changes. Logging out now may cause them to be lost. Do you want to log out anyway?"
+                : "Are you sure you want to log out of BANTAI?"}
             </p>
-
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
-                autoFocus
-                onClick={cancelLogout}
-                className="rounded-lg border border-zinc-700 px-4 py-2.5 text-sm font-semibold text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-900 hover:text-white focus:outline-none focus:ring-2 focus:ring-lime-400"
+                onClick={closeLogoutConfirmation}
+                disabled={isLoggingOut}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Cancel
+                Stay signed in
               </button>
               <button
                 type="button"
                 onClick={confirmLogout}
-                className="rounded-lg border border-lime-400 bg-lime-400 px-4 py-2.5 text-sm font-bold text-black transition hover:bg-transparent hover:text-lime-400 focus:outline-none focus:ring-2 focus:ring-lime-400 focus:ring-offset-2 focus:ring-offset-zinc-950"
+                disabled={isLoggingOut}
+                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {hasUnsavedChanges ? "Discard & Log Out" : "Log Out"}
+                {isLoggingOut ? "Logging out..." : "Log out"}
               </button>
             </div>
           </div>
-        </dialog>
+        </div>
       )}
+
+      {/* Main */}
+      <main className="ml-64 min-h-screen bg-black">
+        <div className="px-8 py-8">
+          <Outlet />
+        </div>
+      </main>
     </div>
   );
 }

@@ -1,9 +1,28 @@
--- =====================================================================
+﻿-- =====================================================================
 -- BANTAI: XGBoost-Based Email Threat Detection and Analysis Engine
 -- Database schema (SQLite 3.31+)  |  Group 11
 --
 -- Privacy rule from the paper: the email BODY is never stored.
 -- Only metadata, numeric features, SHAP values, and explanations are kept.
+--
+-- REVISION 2 (backend integration). Changes are marked "[R2]":
+--   * The deployed model is TF-IDF + XGBoost over the email body, so its SHAP
+--     values belong to WORDS, not to the hand-built feature catalog. They are kept
+--     in scan_token_contributions. shap_results / explanations are reserved for a
+--     feature-engineered model and are NOT populated by the current baseline.
+--   * scan_features holds the rule-based indicators extracted from headers/URLs/text.
+--   * users.profile_picture, extra audit event types, token_feature_map.
+--   * PRAGMA user_version (end of file) marks the schema version; the backend
+--     refuses to run against a database with a different version.
+-- REVISION 3 adds hashed, expiring password-reset tokens and short-lived
+-- per-IP request counters. Existing revision-2 databases migrate in place.
+-- REVISION 4 defaults Auto-save Scan Logs to off; existing saved preferences
+-- remain unchanged during migration.
+-- REVISION 5 enables Auto-save Scan Logs by default for all accounts.
+-- REVISION 5 enforces the guest scan allowance on the server.
+-- REVISION 10 preserves legacy Google SSO identities alongside local accounts.
+-- REVISION 11 adds usernames, email verification, OTPs, and Google OAuth state.
+-- REVISION 12 adds a state-bound, allowlisted browser-extension OAuth return URI.
 -- =====================================================================
 PRAGMA foreign_keys = ON;
 
@@ -14,15 +33,18 @@ CREATE TABLE users (
     user_id               INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name             TEXT    NOT NULL,
     email                 TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    username              TEXT,
+    email_verified_at     TEXT,
     password_hash         TEXT,                                   -- bcrypt/argon2 hash; NULL for SSO-only users
     auth_provider         TEXT    NOT NULL DEFAULT 'local'
-                          CHECK (auth_provider IN ('local','saml')),
+                          CHECK (auth_provider IN ('local','saml','google')),
     sso_subject_id        TEXT,                                   -- SAML NameID from the IdP
     sso_idp_entity_id     TEXT,                                   -- which IdP issued it
     role                  TEXT    NOT NULL DEFAULT 'analyst'
                           CHECK (role IN ('admin','analyst','viewer')),   -- authorization level
     job_title             TEXT,                                   -- display only, e.g. 'SOC Analyst'
     tier_label            TEXT,                                   -- display only, e.g. 'SecOps Tier 1'
+    profile_picture       TEXT CHECK (profile_picture IS NULL OR length(profile_picture) <= 400000),  -- [R2] data URI; size cap is an ASSUMPTION
     is_active             INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
     failed_login_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_login_attempts >= 0),
     locked_until          TEXT,
@@ -30,10 +52,12 @@ CREATE TABLE users (
     created_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     updated_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     CHECK (auth_provider <> 'local' OR password_hash IS NOT NULL),
-    CHECK (auth_provider <> 'saml'  OR sso_subject_id IS NOT NULL)
+    CHECK (auth_provider NOT IN ('saml','google') OR sso_subject_id IS NOT NULL)
 );
 CREATE UNIQUE INDEX ux_users_sso
     ON users (sso_idp_entity_id, sso_subject_id) WHERE sso_subject_id IS NOT NULL;
+CREATE UNIQUE INDEX ux_users_username
+    ON users (username COLLATE NOCASE) WHERE username IS NOT NULL;
 
 -- ---------------------------------------------------------------------
 -- 2. USER_SESSIONS  (Login / Logout -> "Terminate Secure Session")
@@ -218,6 +242,38 @@ CREATE INDEX ix_urls_scan   ON extracted_urls (scan_id);
 CREATE INDEX ix_urls_domain ON extracted_urls (domain);
 
 -- ---------------------------------------------------------------------
+-- 11b. SCAN_TOKEN_CONTRIBUTIONS  [R2]  (word-level SHAP of the TF-IDF + XGBoost model)
+-- contribution is in raw-margin (log-odds) units: NOT percent, does not sum to 100.
+-- Privacy: `token` is one vocabulary word from the body (top_n_explanations rows per
+-- scan at most). If the team decides even single words must not be persisted, drop
+-- this table; the live API response is unaffected.
+-- ---------------------------------------------------------------------
+CREATE TABLE scan_token_contributions (
+    scan_id         INTEGER NOT NULL REFERENCES scans(scan_id) ON DELETE CASCADE,
+    abs_rank        INTEGER NOT NULL CHECK (abs_rank >= 1),         -- 1 = largest |contribution|
+    token           TEXT    NOT NULL,
+    contribution    REAL    NOT NULL,
+    direction       TEXT    NOT NULL CHECK (direction IN ('toward_phishing','toward_safe')),
+    tfidf_value     REAL    NOT NULL,
+    insight_type    TEXT    CHECK (insight_type IN ('Educational Insight','Security Tip')),
+    insight_title   TEXT,                                           -- plain-language text shown to the user
+    insight_message TEXT,
+    PRIMARY KEY (scan_id, abs_rank)
+) WITHOUT ROWID;
+
+-- ---------------------------------------------------------------------
+-- 11c. TOKEN_FEATURE_MAP  [R2]  (education mapping: word -> catalog feature)
+-- When a top SHAP word is listed here, its explanation reuses that feature's
+-- insight_title / insight_template. Words not listed get the generic text in
+-- system_settings (insight_generic_*). Editable content, no code change needed.
+-- ---------------------------------------------------------------------
+CREATE TABLE token_feature_map (
+    token       TEXT    PRIMARY KEY CHECK (token = lower(token)),   -- vectorizer lowercases
+    feature_id  INTEGER NOT NULL REFERENCES feature_definitions(feature_id) ON DELETE CASCADE
+) WITHOUT ROWID;
+CREATE INDEX ix_token_feature ON token_feature_map (feature_id);
+
+-- ---------------------------------------------------------------------
 -- 12. SCAN_FEEDBACK  (user feedback on a result; feeds retraining/evaluation)
 -- ---------------------------------------------------------------------
 CREATE TABLE scan_feedback (
@@ -244,13 +300,27 @@ CREATE TABLE audit_logs (
                     'LOGIN_SUCCESS','LOGIN_FAILED','LOGOUT',
                     'SCAN_SUBMITTED','SCAN_COMPLETED','SCAN_REJECTED',
                     'HISTORY_VIEWED','HISTORY_EXPORTED',
-                    'SETTINGS_UPDATED','FEEDBACK_SUBMITTED','LOGS_PURGED')),
+                    'SETTINGS_UPDATED','FEEDBACK_SUBMITTED','LOGS_PURGED',
+                    'USER_REGISTERED','PROFILE_UPDATED','PASSWORD_CHANGED','PASSWORD_RESET')),  -- [R2] last four
     http_status  INTEGER,                                    -- e.g. 400 for rejected payloads
     detail       TEXT,                                       -- JSON; never contains email body
     ip_address   TEXT,
     user_agent   TEXT,
     created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
+
+-- Guest scan quota reservations count only successful scans and short-lived
+-- in-flight requests. Client IPs are retained only for the rolling quota window.
+CREATE TABLE guest_scan_reservations (
+    reservation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_ip      TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    completed_at   TEXT
+);
+CREATE INDEX ix_guest_scan_reservations_ip_created
+    ON guest_scan_reservations (client_ip, created_at);
+CREATE INDEX ix_guest_scan_reservations_ip_completed
+    ON guest_scan_reservations (client_ip, completed_at);
 CREATE INDEX ix_audit_time  ON audit_logs (created_at DESC);
 CREATE INDEX ix_audit_event ON audit_logs (event_type);
 CREATE INDEX ix_audit_user  ON audit_logs (user_id);
@@ -274,3 +344,66 @@ SELECT  s.scan_id,
         ROUND(MAX(s.malicious_probability, 1 - s.malicious_probability) * 100, 2) AS confidence_pct,
         s.inference_ms
 FROM scans s;
+
+-- ---------------------------------------------------------------------
+-- 15. PASSWORD RECOVERY (only SHA-256 token hashes are persisted)
+-- ---------------------------------------------------------------------
+CREATE TABLE password_reset_tokens (
+    reset_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    token_hash  TEXT NOT NULL UNIQUE,
+    expires_at  TEXT NOT NULL,
+    used_at     TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+CREATE INDEX ix_password_reset_user ON password_reset_tokens (user_id);
+
+CREATE TABLE password_reset_requests (
+    request_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_ip   TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX ix_password_reset_requests_ip_time
+    ON password_reset_requests (client_ip, created_at);
+
+-- ---------------------------------------------------------------------
+-- 16. EMAIL OTP AND GOOGLE OAUTH TRANSACTIONS
+-- ---------------------------------------------------------------------
+CREATE TABLE email_otp_challenges (
+    challenge_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    email        TEXT NOT NULL COLLATE NOCASE,
+    purpose      TEXT NOT NULL CHECK (purpose IN ('registration','password_reset','google_password_setup')),
+    code_hash    TEXT NOT NULL,
+    client_ip    TEXT,
+    attempts     INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
+    expires_at   TEXT NOT NULL,
+    consumed_at  TEXT,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+CREATE INDEX ix_email_otp_user_purpose
+    ON email_otp_challenges (user_id, purpose, created_at);
+CREATE INDEX ix_email_otp_ip_purpose
+    ON email_otp_challenges (client_ip, purpose, created_at);
+
+CREATE TABLE oauth_states (
+    state_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    state_hash            TEXT NOT NULL UNIQUE,
+    nonce_hash            TEXT NOT NULL,
+    extension_redirect_uri TEXT,
+    expires_at            TEXT NOT NULL,
+    consumed_at           TEXT,
+    created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+CREATE TABLE oauth_login_tickets (
+    ticket_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_hash TEXT NOT NULL UNIQUE,
+    user_id     INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    expires_at  TEXT NOT NULL,
+    consumed_at TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+-- Schema version. Bump this whenever a table/column/CHECK changes.
+PRAGMA user_version = 12;

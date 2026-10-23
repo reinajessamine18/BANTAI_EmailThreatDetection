@@ -25,7 +25,7 @@ ML_DIR = Path(__file__).resolve().parents[1]
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from src.models import baseline_inference as bi  # noqa: E402, RUF100
+from src.models import baseline_inference as bi  # noqa: E402
 
 ARTIFACTS_DIR = ML_DIR / "artifacts" / "baseline"
 VALIDATION_CSV = ML_DIR / "data" / "processed" / "validation.csv"

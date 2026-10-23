@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
-import backgroundImage from "../assets/BANTAI-background.png";
-import heroImage from "../assets/BANTAI-3D.png";
+import backgroundImage from "../assets/bantai-background.webp";
+import heroImage from "../assets/BANTAI-3D.webp";
 
 export default function Hero() {
   return (
@@ -34,20 +34,17 @@ export default function Hero() {
 
           <p className="mt-7 max-w-lg text-base leading-7 text-zinc-400 sm:text-lg">
             The XGBoost-powered threat analysis engine.
-            Empower your users with rapid phishing detection
+            Empower users with rapid phishing detection
             and SHAP-driven explainability.
           </p>
 
           <div className="mt-8">
 
             <Link
-              to="/analyze"
+              to="/login"
               className="inline-flex items-center gap-3 rounded-full bg-lime-400 px-7 py-4 text-sm font-bold text-black transition-all hover:bg-lime-300 hover:shadow-[0_0_30px_rgba(190,255,0,0.35)]"
             >
               Scan an Email
-              <span className="text-lg">
-                ›
-              </span>
             </Link>
 
           </div>
