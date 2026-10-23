@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --bg: #08090d;
@@ -42,7 +42,14 @@ button { cursor: pointer; }
   padding: 0 12px;
   border-bottom: 1px solid #1a1b22;
 }
-.brand { color: #fff; font-size: 19px; font-style: italic; font-weight: 900; letter-spacing: -.04em; }
+.brand, .auth-logo {
+  color: #fff;
+  font-size: 1.5rem;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: -.025em;
+  line-height: 2rem;
+}
 .brand span, .auth-logo span { color: #a3e635; }
 .icon-button, .text-button {
   border: 0;
@@ -195,7 +202,7 @@ button { cursor: pointer; }
 .auth-screen { display: grid; min-height: 100%; padding: 12px; place-items: center; }
 .auth-card { width: 100%; max-width: 510px; padding: 24px 20px; border: 1px solid rgb(39 39 42 / 90%); border-radius: 14px; background: rgb(0 0 0 / 88%); box-shadow: 0 18px 40px rgb(0 0 0 / 45%); }
 .auth-intro { margin: 0 0 20px; text-align: center; }
-.auth-logo { margin-bottom: 14px; color: #fff; font-size: 30px; font-style: italic; font-weight: 950; letter-spacing: -.055em; line-height: 1; }
+.auth-logo { margin-bottom: 14px; }
 .auth-intro h1 { margin: 0; font-size: 23px; font-weight: 750; letter-spacing: -.02em; }
 .auth-intro p { margin: 8px 0 0; color: #71717a; font-size: 13px; line-height: 1.5; }
 .auth-feedback { margin: -6px 0 14px; }

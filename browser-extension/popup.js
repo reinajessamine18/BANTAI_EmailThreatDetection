@@ -388,14 +388,23 @@ async function googleLogin() {
 
 async function extractActiveEmail() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !tab.url?.startsWith("https://mail.google.com/")) {
+  let activeUrl;
+  try {
+    activeUrl = new URL(tab?.url || "");
+  } catch {
+    activeUrl = null;
+  }
+  if (!tab?.id || activeUrl?.origin !== "https://mail.google.com") {
     return {
       ok: false,
       message: "Open an individual email in Gmail to begin. Gmail in Chrome is currently supported.",
     };
   }
   try {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content.js"],
+    });
     return await chrome.tabs.sendMessage(tab.id, { type: "bantai:extract-active-email" });
   } catch {
     return {
@@ -430,13 +439,13 @@ async function showReady(error = "") {
   const emailCard = currentEmail
     ? `<article class="card message-card">
         <h1 class="message-title">${escapeHtml(currentEmail.subject || "No subject")}</h1>
-        <div class="message-sender">From: ${escapeHtml(currentEmail.sender || "Sender address unavailable")}</div>
-        <div class="message-meta"><span>Gmail · message content stays in memory</span><span>READY</span></div>
+        ${currentEmail.sender ? `<div class="message-sender">From: ${escapeHtml(currentEmail.sender)}</div>` : ""}
+        <div class="message-meta"><span>Gmail · content stays in memory</span><span>READY</span></div>
       </article>`
     : `<article class="card center" style="padding:25px 16px">
         <div class="avatar">⌕</div>
-        <h2 class="section-title">NO ACTIVE EMAIL</h2>
-        <p class="muted">${escapeHtml(extracted?.message || "Open an individual email in Gmail to begin.")}</p>
+        <h2 class="section-title">NO SCANNABLE TEXT</h2>
+        <p class="muted">${escapeHtml(extracted?.message || "Open an individual message in Gmail to begin.")}</p>
         <button class="button button-quiet" id="retry-extract" type="button">CHECK ACTIVE TAB</button>
       </article>`;
 

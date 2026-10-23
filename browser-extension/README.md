@@ -26,7 +26,8 @@ application's `.eml` and pasted-text submission methods.
    the extension. For local development the API defaults to
    `http://127.0.0.1:8000/api/v1`.
 5. Open an individual email in Gmail (`mail.google.com`), then open the BANTAI
-   extension and choose **Scan Email for Threats**.
+   extension and choose **Scan Email for Threats**. This includes email
+   notifications sent by Google Docs, such as comment or sharing alerts.
 
 ## Behavior and privacy
 
@@ -49,8 +50,9 @@ application's `.eml` and pasted-text submission methods.
   login ticket. The extension never receives the Google client secret.
 - Remote API URLs must use HTTPS. The extension does not expose connection
   settings in its popup.
-- This first implementation supports Gmail in Chrome. Outlook, other browsers,
-  production publishing/signing, and production API hosting are not included.
+- Gmail is supported in Chrome, including messages sent by Google services.
+  Google Docs pages themselves, Outlook, other browsers, production
+  publishing/signing, and production API hosting are not included.
 
 ## Google OAuth setup for the extension
 
