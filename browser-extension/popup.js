@@ -106,7 +106,7 @@ function showAuth(error = "", notice = "") {
   const login = authStep === "login";
   const reset = authStep.startsWith("reset-");
   const title = {
-    login: "Log in",
+    login: "Sign in",
     "reset-email": "Reset your password",
     "reset-verify": "Verify your reset code",
     "reset-password": "Choose a new password",

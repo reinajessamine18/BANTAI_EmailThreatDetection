@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   House,
-  Search,
   Clock,
   Settings,
 } from "lucide-react";
@@ -79,11 +78,6 @@ function DashboardLayout() {
       name: "Dashboard",
       path: "/app/dashboard",
       icon: House,
-    },
-    {
-      name: "Analyze Email",
-      path: "/app/analyze",
-      icon: Search,
     },
     {
       name: "Threat History",

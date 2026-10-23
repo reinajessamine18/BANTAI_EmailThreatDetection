@@ -19,7 +19,6 @@ import ForgotPassword from "./components/ForgotPassword";
 import ResetPassword from "./components/ResetPassword";
 
 import DashboardLayout from "./components/DashboardLayout";
-import AnalyzeEmail from "./components/AnalyzeEmail";
 
 import Dashboard from "./components/Dashboard";
 import ThreatHistory from "./components/ThreatHistory";
@@ -61,14 +60,14 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Keep legacy scan links, but require sign-in before scanning. */}
+        {/* Legacy scan links lead to login; scanning is available in the extension. */}
         <Route path="/analyze" element={<Navigate to="/login" replace />} />
 
-        {/* Authenticated Application "Newly Add" */}
+        {/* Authenticated account application */}
         <Route element={<RequireAuth />}> 
           <Route element={<DashboardLayout />}>
           <Route path="/app/dashboard" element={<Dashboard />} />
-          <Route path="/app/analyze" element={<AnalyzeEmail />} />
+          <Route path="/app/analyze" element={<Navigate to="/app/dashboard" replace />} />
           <Route path="/app/threat-history" element={<ThreatHistory />} />
           <Route path="/app/threat-history/:scanId" element={<ScanDetail />} />
           <Route path="/app/settings" element={<Settings />} />

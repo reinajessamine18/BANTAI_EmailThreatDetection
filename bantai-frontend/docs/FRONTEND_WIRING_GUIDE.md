@@ -34,7 +34,7 @@ try {
 
 - Never start a POST (a scan) from `useEffect`: React StrictMode runs effects twice in development.
 - The token lives in `localStorage` (`bantaiToken`) and is sent only by the client. Never read or write it elsewhere. Because browser scripts can access it, an XSS vulnerability could expose the token.
-- Email scanning is available only in the authenticated application. The home-page scan button opens `/login`; the legacy `/analyze` route redirects there as well.
+- Email scanning is available only in the BANTAI browser extension. The web application provides the dashboard, threat history, scan details, and system settings. Legacy `/analyze` links redirect to `/login`; `/app/analyze` redirects to the dashboard.
 
 ## 3. File by file
 
@@ -56,7 +56,6 @@ Add `import RequireAuth from "./components/RequireAuth";` and `import ScanDetail
 <Route element={<RequireAuth />}>
   <Route element={<DashboardLayout />}>
     <Route path="/app/dashboard" element={<Dashboard />} />
-    <Route path="/app/analyze" element={<AnalyzeEmail />} />
     <Route path="/app/threat-history" element={<ThreatHistory />} />
     <Route path="/app/threat-history/:scanId" element={<ScanDetail />} />
     <Route path="/app/settings" element={<Settings />} />
@@ -152,42 +151,18 @@ const handleLogout = async () => {
 
 Keep the `bantaiUserUpdated` listener (Settings fires it after a save). Replace `user?.name` (line 66) with `user?.fullName`. `profilePicture` (line 68) keeps working: `getProfile()` returns it.
 
-### 3.7 `AnalyzeEmail.jsx` (signed-in scanner)
+### 3.7 Email scanning
 
-Add the three states and the import, **replace lines 66-79**, and change `result={null}` (line 84) to `result={result}`:
+Email scanning is performed by the BANTAI browser extension, not the web
+application. The web application displays account dashboard information, scan
+history and scan details.
 
-```jsx
-const handleScan = async () => {
-  if (scanning) return;
+### 3.8 `AnalysisResults.jsx`
 
-  if (inputMethod === "upload" && !selectedFile) {
-    alert("Select an .eml file before scanning.");
-    return;
-  }
-  if (inputMethod === "paste" && !pasteContent.trim()) {
-    alert("Paste email content before scanning.");
-    return;
-  }
+The shared result component is used to display existing scan details in the
+authenticated application. It is not the web scan form.
 
-  setScanning(true);
-  setScanError("");
-  try {
-    const data = await scanEmail({
-      file: inputMethod === "upload" ? selectedFile : undefined,
-      text: inputMethod === "paste" ? pasteContent : undefined,
-    });
-    setResult(data);
-    setScannedAt(data.scannedAt);
-    setScanCompleted(true);
-  } catch (err) {
-    setScanError(friendlyError(err));
-  } finally {
-    setScanning(false);
-  }
-};
-```
-
-### 3.8 `AnalysisResults.jsx` (three text fixes)
+### 3.9 `AnalysisResults.jsx` (three text fixes)
 
 It already reads `riskLevel`, `threatScore`, `explanations`, `fileName`, `scannedAt`, `inferenceTimeMs`, `sender`, `subject`, `emailBody`, so no data wiring is needed. Fix wording that would now be false:
 
@@ -199,7 +174,7 @@ It already reads `riskLevel`, `threatScore`, `explanations`, `fileName`, `scanne
 
 Optional: under the "SHAP attribution & insights" heading show `{result?.shap?.note}`, so users see the values are log-odds, not percentages. Word items have `kind: "word"`; rule-based findings have `kind: "indicator"` and no number.
 
-### 3.9 `ThreatHistory.jsx` (+ the new `ScanDetail`)
+### 3.10 `ThreatHistory.jsx` (+ the new `ScanDetail`)
 
 Add imports `useEffect`, `useNavigate` (react-router-dom) and `fetchHistoryCsv, friendlyError, listHistory, saveBlob` from the client. **Replace lines 9-22** (`history` and `filteredHistory`). Filtering and search now happen on the server:
 
@@ -264,7 +239,7 @@ Then in the JSX: rename every `filteredHistory` to `items`; show `{total}` as th
 
 If `total > items.length`, show "Showing the newest 50 of {total}. Narrow the filters to see others." (add a "Load more" with `offset` later).
 
-### 3.10 `Dashboard.jsx`
+### 3.11 `Dashboard.jsx`
 
 Change line 9 to `import { useEffect, useState } from "react";` and add:
 
@@ -345,7 +320,7 @@ Then in the JSX:
 - "Recent Scan Activity": make "View All" `<Link to="/app/threat-history">`, and render `data.recent` rows: Timestamp `item.date`, Subject `item.subject`, Sender `item.email`, Threat Score `item.threatScore`, Status `item.classification`. Keep the empty-state row when `data?.recent` is empty.
 - Show `{error}` if set.
 
-### 3.11 `Settings.jsx`
+### 3.12 `Settings.jsx`
 
 Add the client imports `changePassword, friendlyError, getHealth, getPreferences, getProfile, preferencesToApi, preferencesToUi, updatePreferences, updateProfile`.
 
@@ -477,10 +452,10 @@ Replace the paragraph starting "These preferences are saved in this browser only
 | `invalid_token` / `not_authenticated` (401) | any signed-in call | token cleared, redirect to `/login` |
 | `invalid_current_password` (403) | password / email change | same text covers "wrong" and "locked" |
 | `password_required` (422) | email change | show the password input |
-| `too_large`, `file_too_large`, `body_too_long` | scanners | "too large" messages |
-| `unparseable`, `invalid_base64` (422) | scanners | file/paste could not be read |
-| `ml_unavailable` (503) | scanners | "service unavailable, try again" |
-| `storage_failed` (500) | scanners | scan not recorded, so no result is shown |
+| `too_large`, `file_too_large`, `body_too_long` | extension scans | "too large" messages |
+| `unparseable`, `invalid_base64` (422) | extension scans | message could not be read |
+| `ml_unavailable` (503) | extension scans | "service unavailable, try again" |
+| `storage_failed` (500) | extension scans | scan not recorded, so no result is shown |
 | `network_error` (0) | any | "Cannot reach the BANTAI server" |
 
 ## 6. Verify it works (in order)
@@ -489,20 +464,20 @@ Replace the paragraph starting "These preferences are saved in this browser only
 2. Backend running; open `http://localhost:5173`. DevTools > Application: after the steps above there is **no** `bantaiUser` in Local Storage.
 3. Sign up with a 10+ character password. You land on the Dashboard with zeros. Session Storage holds `bantaiToken`.
 4. Visit `/app/dashboard` in a private window: you are sent to `/login`.
-5. Analyze Email: upload an `.eml`. The Network tab shows `POST /api/v1/scans` 200 with an `Authorization` header. Score, badge and SHAP words appear.
+5. Use the BANTAI browser extension to scan an email. The extension submits `POST /api/v1/scans` with the authenticated session.
 6. Threat History shows that scan. View opens the detail (no email body, by design). Export CSV downloads a file that opens in Excel.
 7. Dashboard: total 1, a chart point for today, the scan in Recent Scan Activity.
-8. Settings: change the name (sidebar updates); toggle Auto-save off, scan again: results say not saved and History still shows 1; toggle it back on.
+8. Settings: change the name (sidebar updates); toggle Auto-save off, scan again in the extension: History remains unchanged; toggle it back on.
 9. Change the password in one tab while signed in on another: the other tab is sent to `/login` on its next request.
 10. Log out: `/app/dashboard` redirects to `/login`.
-11. Open `/analyze`: you are redirected to `/login`. The home-page "Scan an Email" button also opens `/login`.
+11. Open `/analyze`: you are redirected to `/login`. Open `/app/analyze` while logged in: you are redirected to the Dashboard.
 12. Stop the backend: screens show "Cannot reach the BANTAI server", not a blank page.
 13. Five wrong passwords: the sixth attempt (even the right password) fails with the "temporarily locked" message. This needs the lockout patch from the Step 7b zip.
 
 ## 7. If something fails
 
 - **Every request is blocked in the console (CORS):** you opened `127.0.0.1` or another port. Use `http://localhost:5173`, or set `BANTAI_CORS_ORIGINS`.
-- **Scan access:** the `/api/v1/scans` endpoint requires sign-in; the legacy `/analyze` route redirects to `/login`.
+- **Scan access:** email scans are submitted from the authenticated browser extension. The legacy web `/analyze` route redirects to `/login`; `/app/analyze` redirects to the Dashboard.
 - **Calls go to the wrong URL:** `.env.development` was added without restarting `npm run dev`; the variable must start with `VITE_`.
 - **Profile picture rejected:** over about 300 KB, or SVG. Resize or convert.
 - **ESLint `react-hooks` complains about `setLoading(true)` in an effect:** harmless for the build; move that call into an event handler if you want it silent.
@@ -511,7 +486,7 @@ Replace the paragraph starting "These preferences are saved in this browser only
 
 1. **Token storage.** Tokens are stored in `localStorage` so users stay signed in across tabs and browser restarts. To migrate a token left in `sessionStorage` by an earlier version, reload the tab that currently has that token; that tab copies it to `localStorage`. Any XSS bug could read the token; avoid unsafe HTML/script injection and keep token lifetimes appropriately limited.
 2. **Auto-save defaults on for new accounts.** Existing saved preferences are retained, so users who previously turned it off remain opted out.
-3. **Unauthenticated scans are not available.** `/analyze` is retained only as a redirect to `/login`; actual scans require an authenticated account.
+3. **Web scanning is not available.** The website provides Dashboard, Threat History, scan details, and System Settings; email scanning is performed through the authenticated browser extension.
 4. **History search by scan ID is not supported.** The search box placeholder mentions "scan ID", but the API searches only subject and sender. Change the placeholder, or ask for the backend change.
 5. **No password reset** until a way to verify the user exists (admin-issued code, or email).
 6. **The SHAP advanced-mode toggle has no effect yet.** It is saved on the server; nothing reads it. For example, hide the numeric `value` when it is off.
