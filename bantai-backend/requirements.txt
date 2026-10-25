@@ -11,6 +11,7 @@ pydantic-settings>=2.2
 sqlalchemy>=2.0
 beautifulsoup4>=4.12
 google-auth[requests]>=2.28.0
+requests>=2.31
 
 # ML pins are the ones verified by the ML team. Reused, not duplicated, so the
 # backend can never drift from the versions the .pkl artifacts were built with.
