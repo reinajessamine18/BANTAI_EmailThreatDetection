@@ -33,8 +33,8 @@ from typing import Optional
 logger = logging.getLogger("bantai.db")
 
 MIN_SQLITE = (3, 31, 0)  # generated columns (scans.scan_code)
-BASELINE_VERSION_TAG = "baseline-tfidf-xgb-v1"
-_BASELINE_DIR = Path("artifacts") / "baseline"
+BASELINE_VERSION_TAG = "modern-tfidf-xgb-v1"
+_BASELINE_DIR = Path("artifacts") / "modern_baseline"
 
 
 class DatabaseInitError(RuntimeError):
@@ -194,7 +194,7 @@ def register_baseline_model(conn: sqlite3.Connection, ml_dir: Path) -> bool:
             "random_state": config.get("random_state"),
         }
     )
-    base = "machine-learning/artifacts/baseline"  # repo-relative; no machine-specific paths
+    base = "machine-learning/artifacts/modern_baseline"  # repo-relative; no machine-specific paths
 
     try:
         conn.execute("UPDATE model_versions SET is_active = 0 WHERE is_active = 1")
@@ -205,7 +205,7 @@ def register_baseline_model(conn: sqlite3.Connection, ml_dir: Path) -> bool:
             " VALUES (?, 'XGBoost', 'shap.TreeExplainer', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
             (
                 BASELINE_VERSION_TAG,
-                "Balanced_Dataset.csv (deduplicated; see dataset_preparation_manifest.json)",
+                "modern_email_dataset.csv (35k sample, bigrams)",
                 config.get("train_rows"),
                 metrics.get("accuracy"),
                 metrics.get("precision"),

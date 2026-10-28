@@ -39,7 +39,7 @@ def load_ml(ml_dir: Path) -> MlStatus:
     try:
         warm_up()
     except FileNotFoundError:
-        logger.error("ML artifacts are missing (expected under <ml_dir>/artifacts/baseline)")
+        logger.error("ML artifacts are missing (expected under <ml_dir>/artifacts/modern_baseline)")
         return MlStatus(False, "artifacts_missing")
     except Exception as exc:  # unpickling/version problems, SHAP init, etc.
         logger.error("ML model failed to load: %s", type(exc).__name__)
