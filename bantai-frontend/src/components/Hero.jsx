@@ -7,7 +7,7 @@ export default function Hero() {
   return (
     <section
       id="home"
-      className="relative min-h-[700px] overflow-hidden bg-black"
+      className="relative min-h-[620px] overflow-hidden bg-black sm:min-h-[700px]"
     >
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -20,11 +20,11 @@ export default function Hero() {
 
       <div className="absolute right-[15%] top-[25%] h-[500px] w-[500px] rounded-full bg-lime-400/10 blur-[120px]" />
 
-      <div className="relative mx-auto grid min-h-[700px] max-w-7xl items-center gap-10 px-6 pb-20 pt-32 lg:grid-cols-2 lg:px-10">
+      <div className="relative mx-auto grid min-h-[620px] max-w-7xl items-center gap-2 px-5 pb-8 pt-24 sm:min-h-[700px] sm:gap-10 sm:px-6 sm:pb-20 sm:pt-32 lg:grid-cols-2 lg:px-10">
 
         <div className="relative z-10 max-w-2xl">
 
-          <h1 className="text-5xl font-black leading-[0.95] tracking-tight text-white sm:text-6xl lg:text-7xl">
+          <h1 className="text-4xl font-black leading-[0.98] tracking-tight text-white sm:text-6xl lg:text-7xl">
             Stop Phishing
             <br />
             Attacks Before
@@ -51,12 +51,12 @@ export default function Hero() {
 
         </div>
 
-        <div className="relative h-[520px]">
+        <div className="relative h-[280px] sm:h-[440px] lg:h-[520px]">
 
           <img
             src={heroImage}
             alt="BANTAI email threat analysis"
-            className="absolute left-1/2 top-1/2 w-[700px] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain"
+            className="absolute left-1/2 top-1/2 w-full max-w-[700px] -translate-x-1/2 -translate-y-1/2 object-contain"
           />
 
         </div>

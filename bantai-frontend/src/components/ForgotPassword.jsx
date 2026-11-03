@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 
 import backgroundImage from "../assets/bantai-login.webp";
 import lockIcon from "../assets/lock-icon.png";
@@ -16,6 +17,8 @@ function ForgotPassword() {
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resetAuthorization, setResetAuthorization] = useState("");
   const [step, setStep] = useState("email");
   const [busy, setBusy] = useState(false);
@@ -157,35 +160,57 @@ function ForgotPassword() {
                       <label htmlFor="new-password" className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-400">
                         New Password
                       </label>
-                      <input
-                        id="new-password"
-                        type="password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        autoComplete="new-password"
-                        minLength={10}
-                        maxLength={128}
-                        required
-                        disabled={busy}
-                        className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-4 py-3.5 text-sm text-white outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
-                      />
+                      <div className="relative">
+                        <input
+                          id="new-password"
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                          autoComplete="new-password"
+                          minLength={10}
+                          maxLength={128}
+                          required
+                          disabled={busy}
+                          className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-4 py-3.5 pr-12 text-sm text-white outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          aria-label={showPassword ? "Hide new password" : "Show new password"}
+                          disabled={busy}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-zinc-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+                        >
+                          {showPassword ? <EyeOff aria-hidden="true" size={20} /> : <Eye aria-hidden="true" size={20} />}
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label htmlFor="confirm-password" className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-400">
                         Confirm New Password
                       </label>
-                      <input
-                        id="confirm-password"
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(event) => setConfirmPassword(event.target.value)}
-                        autoComplete="new-password"
-                        minLength={10}
-                        maxLength={128}
-                        required
-                        disabled={busy}
-                        className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-4 py-3.5 text-sm text-white outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
-                      />
+                      <div className="relative">
+                        <input
+                          id="confirm-password"
+                          type={showConfirmPassword ? "text" : "password"}
+                          value={confirmPassword}
+                          onChange={(event) => setConfirmPassword(event.target.value)}
+                          autoComplete="new-password"
+                          minLength={10}
+                          maxLength={128}
+                          required
+                          disabled={busy}
+                          className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-4 py-3.5 pr-12 text-sm text-white outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 disabled:opacity-50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          aria-label={showConfirmPassword ? "Hide confirmed password" : "Show confirmed password"}
+                          disabled={busy}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-zinc-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+                        >
+                          {showConfirmPassword ? <EyeOff aria-hidden="true" size={20} /> : <Eye aria-hidden="true" size={20} />}
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
