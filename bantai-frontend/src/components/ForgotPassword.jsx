@@ -218,11 +218,13 @@ function ForgotPassword() {
                 </button>
               </div>
             )}
-            <div className="mt-7 text-center">
-              <Link to="/login" className="text-xs font-semibold text-lime-400 transition hover:text-lime-300">
-                Back to Log In
-              </Link>
-            </div>
+            {step !== "complete" && (
+              <div className="mt-7 text-center">
+                <Link to="/login" className="text-xs font-semibold text-lime-400 transition hover:text-lime-300">
+                  Back to Log In
+                </Link>
+              </div>
+            )}
           </div>
         </div>
         <footer className="px-6 pb-7 text-center">

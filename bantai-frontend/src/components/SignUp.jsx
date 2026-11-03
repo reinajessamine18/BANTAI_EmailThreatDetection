@@ -21,6 +21,7 @@ function SignUp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (event) => {
@@ -76,6 +77,7 @@ function SignUp() {
       style={{ backgroundImage: `url(${backgroundImage})` }}
     >
       <div className="absolute inset-0 bg-black/55" />
+      {termsAccepted ? (
       <div className="relative z-10 flex min-h-screen flex-col">
         <div className="flex flex-1 items-center justify-center px-6 py-12">
           <div className="w-full max-w-md rounded-2xl border border-zinc-800/80 bg-black/80 p-8 shadow-2xl backdrop-blur-md sm:p-10">
@@ -264,6 +266,48 @@ function SignUp() {
           </div>
         </footer>
       </div>
+      ) : (
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-6 py-12">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="signup-terms-title"
+            className="max-h-[calc(100vh-3rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-7 shadow-2xl sm:p-9"
+          >
+            <p className="text-xs font-bold uppercase tracking-wider text-lime-400">Before you continue</p>
+            <h1 id="signup-terms-title" autoFocus tabIndex={-1} className="mt-3 text-2xl font-bold text-white">
+              Account and Gmail scanning agreement
+            </h1>
+            <div className="mt-5 space-y-4 text-sm leading-6 text-zinc-300">
+              <p>
+                You can create a BANTAI account with your email and password. Google sign-in is optional; signing in with Google does not give BANTAI access to your Gmail inbox.
+              </p>
+              <p>
+                Gmail scanning is available through the BANTAI Chrome extension. It reads the open message only after you choose to scan it, then sends its visible text, sender, subject, and HTTP(S) links to BANTAI for analysis.
+              </p>
+              <p>
+                Scan results and related audit information may be saved to your account history. Only scan messages you are authorized to share, and avoid submitting sensitive content unless necessary.
+              </p>
+            </div>
+            <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => navigate("/")}
+                className="rounded-lg border border-zinc-700 px-5 py-3 text-sm font-semibold text-zinc-300 transition hover:bg-zinc-900 hover:text-white"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => setTermsAccepted(true)}
+                className="rounded-lg bg-lime-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-lime-300"
+              >
+                Agree and continue
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

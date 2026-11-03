@@ -24,7 +24,7 @@ function Navbar() {
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           className="flex items-center"
         >
-          <span className="text-2xl font-black italic tracking-tight text-white">
+          <span className="select-none caret-transparent text-2xl font-black italic tracking-tight text-white">
             BANTAI<span className="text-lime-400">.</span>
           </span>
         </Link>
@@ -76,7 +76,7 @@ function Navbar() {
                   to="/signup"
                   className="rounded-lg border border-lime-400 bg-lime-400 px-4 py-2 text-sm font-bold text-black transition duration-200 hover:bg-transparent hover:text-lime-400 hover:shadow-[0_0_25px_rgba(190,255,0,0.3)] focus:bg-transparent focus:text-lime-400 focus:outline-none"
                 >
-                  Sign Up
+                  Create Account
                 </Link>
               </>
             )}
