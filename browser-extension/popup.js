@@ -53,6 +53,89 @@ function webAppPage(path) {
   return new URL(path, session.webAppUrl || DEFAULT_WEB_APP_URL).toString();
 }
 
+function webAppHostPatterns() {
+  const webApp = new URL(session.webAppUrl || DEFAULT_WEB_APP_URL);
+  if (!['http:', 'https:'].includes(webApp.protocol)) {
+    throw new Error("The BANTAI website address must use HTTP or HTTPS.");
+  }
+  const hostnames = new Set([webApp.hostname]);
+  if (webApp.hostname === "localhost") hostnames.add("127.0.0.1");
+  if (webApp.hostname === "127.0.0.1") hostnames.add("localhost");
+  return [...hostnames].map((hostname) => `${webApp.protocol}//${hostname}/*`);
+}
+
+async function signInWithWebsite({ requestPermission = true, silent = false } = {}) {
+  const button = app.querySelector("#website-login");
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = `<span class="spinner"></span> Connecting...`;
+  }
+
+  try {
+    const origins = webAppHostPatterns();
+    if (requestPermission) {
+      const permissionGranted = await chrome.permissions.request({ origins });
+      if (!permissionGranted) {
+        if (!silent) showAuth("Allow access to your BANTAI website to use its signed-in account.");
+        return false;
+      }
+    } else if (!await chrome.permissions.contains({ origins })) {
+      return false;
+    }
+
+    const tabs = [];
+    for (const pattern of origins) {
+      tabs.push(...await chrome.tabs.query({ url: pattern }));
+    }
+    tabs.sort((left, right) => Number(Boolean(right.active)) - Number(Boolean(left.active)));
+
+    let websiteToken = "";
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      try {
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => window.localStorage.getItem("bantaiToken"),
+        });
+        if (typeof result?.result === "string" && result.result) {
+          websiteToken = result.result;
+          break;
+        }
+      } catch {
+        // Continue checking other open BANTAI tabs.
+      }
+    }
+
+    if (!websiteToken) {
+      if (!silent) showAuth("No signed-in BANTAI website was found. Sign in on the website, then try again.");
+      return false;
+    }
+
+    const result = await send({ type: "bantai:website-handoff", accessToken: websiteToken });
+    websiteToken = "";
+    if (!result.ok) {
+      if (!silent) showAuth(result.error?.message || result.error || "Could not use the website session.");
+      return false;
+    }
+
+    session = await send({ type: "bantai:get-session" });
+    if (session.error || !session.accessToken) {
+      if (!silent) showAuth("The extension could not save the new sign-in session.");
+      return false;
+    }
+    await showReady();
+    return true;
+  } catch (error) {
+    if (!silent) showAuth(error.message || "Could not connect to the BANTAI website session.");
+    return false;
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = "Continue with website account";
+    }
+  }
+}
+
 async function openAuthenticatedWebPage(path, trigger) {
   trigger.disabled = true;
   try {
@@ -144,7 +227,8 @@ function showAuth(error = "", notice = "") {
     "reset-password": "Save New Password",
   }[authStep];
   const contextButtons = login
-    ? `<div class="auth-divider"><span>OR</span></div>
+     ? `<button class="button button-google" type="button" id="website-login">Continue with website account</button>
+       <div class="auth-divider"><span>OR</span></div>
        <button class="button button-google" type="button" id="google-login"><span aria-hidden="true" class="google-mark">G</span><span>Continue with Google</span></button>
        <div class="signup-prompt"><p>New to BANTAI?</p>
        <a class="auth-link" id="website-signup" target="_blank" rel="noopener noreferrer">Create an account on our website</a></div>`
@@ -200,6 +284,7 @@ function showAuth(error = "", notice = "") {
   if (signupLink) {
     signupLink.href = webAppPage("/signup");
   }
+  app.querySelector("#website-login")?.addEventListener("click", signInWithWebsite);
   app.querySelector("#show-login")?.addEventListener("click", () => {
     authStep = "login";
     resetAuthorization = null;
@@ -469,6 +554,59 @@ async function showReady(error = "") {
   app.querySelector("#scan-button").addEventListener("click", scanActiveEmail);
 }
 
+async function showGuestReady() {
+  view = "guest-ready";
+  const extracted = await extractActiveEmail();
+  currentEmail = extracted?.ok ? extracted : null;
+  const emailCard = currentEmail
+    ? `<article class="card message-card">
+        <h1 class="message-title">${escapeHtml(currentEmail.subject || "No subject")}</h1>
+        ${currentEmail.sender ? `<div class="message-sender">From: ${escapeHtml(currentEmail.sender)}</div>` : ""}
+        <div class="message-meta"><span>Gmail · preview only</span><span>READY</span></div>
+      </article>`
+    : `<article class="card center" style="padding:25px 16px">
+        <div class="avatar">⌕</div>
+        <h2 class="section-title">NO SCANNABLE TEXT</h2>
+        <p class="muted">${escapeHtml(extracted?.message || "Open an individual message in Gmail to begin.")}</p>
+        <button class="button button-quiet" id="retry-extract" type="button">CHECK ACTIVE TAB</button>
+      </article>`;
+
+  shell(`
+    ${header()}
+    <section class="content">
+      <div class="status-row">
+        <span class="account">GMAIL SCAN</span>
+        <button class="text-button small" id="guest-login" type="button">Sign in</button>
+      </div>
+      <p class="muted">${currentEmail ? "Message found. Sign in is only needed when you choose to scan." : "Open an email in Gmail to check for scannable text."}</p>
+      ${emailCard}
+      <div class="stack" style="margin-top:14px">
+        <button class="button button-primary" id="guest-scan" type="button" ${currentEmail ? "" : "disabled"}>
+          SCAN EMAIL FOR THREATS
+        </button>
+      </div>
+    </section>`);
+
+  app.querySelector("#guest-login").addEventListener("click", () => showAuth());
+  app.querySelector("#retry-extract")?.addEventListener("click", showGuestReady);
+  app.querySelector("#guest-scan").addEventListener("click", scanFromGuestReady);
+}
+
+async function scanFromGuestReady(event) {
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.innerHTML = `<span class="spinner"></span> Connecting...`;
+
+  const connected = await signInWithWebsite({ requestPermission: true, silent: true });
+  if (connected) {
+    await scanActiveEmail();
+  } else {
+    showAuth("Sign in to BANTAI to scan this email.");
+  }
+
+  if (button.isConnected) button.disabled = false;
+}
+
 function showConnectionError(message) {
   view = "error";
   shell(`
@@ -645,7 +783,8 @@ async function initialize() {
   session.apiBaseUrl ||= DEFAULT_API_BASE_URL;
   session.webAppUrl ||= DEFAULT_WEB_APP_URL;
   if (!session.accessToken) {
-    showAuth();
+    const connected = await signInWithWebsite({ requestPermission: false, silent: true });
+    if (!connected) await showGuestReady();
     return;
   }
   const me = await api("/auth/me");
@@ -654,7 +793,8 @@ async function initialize() {
       await send({ type: "bantai:clear-session" });
       session.accessToken = null;
       session.user = null;
-      showAuth("Your BANTAI session expired. Log in again to continue.");
+      const connected = await signInWithWebsite({ requestPermission: false, silent: true });
+      if (!connected) await showGuestReady();
     } else {
       showConnectionError(me.error?.message || "The BANTAI server is unavailable.");
     }

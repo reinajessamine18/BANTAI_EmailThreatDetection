@@ -40,12 +40,14 @@ function apiError(status, data) {
   };
 }
 
-async function requestApi({ path, method = "GET", body, auth = true }) {
+async function requestApi({ path, method = "GET", body, auth = true, authorizationToken }) {
   const stored = await chrome.storage.local.get(["apiBaseUrl", "accessToken"]);
   const baseUrl = normalizeBaseUrl(stored.apiBaseUrl || DEFAULT_API_BASE_URL);
   const headers = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (auth && stored.accessToken) {
+  if (authorizationToken) {
+    headers.Authorization = `Bearer ${authorizationToken}`;
+  } else if (auth && stored.accessToken) {
     headers.Authorization = `Bearer ${stored.accessToken}`;
   }
 
@@ -81,6 +83,55 @@ async function requestApi({ path, method = "GET", body, auth = true }) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "bantai:website-handoff") {
+    (async () => {
+      const websiteToken = typeof message.accessToken === "string"
+        ? message.accessToken
+        : "";
+      if (!websiteToken) {
+        sendResponse({ ok: false, error: "The website session is unavailable." });
+        return;
+      }
+
+      const created = await requestApi({
+        path: "/auth/web-handoff",
+        method: "POST",
+        auth: false,
+        authorizationToken: websiteToken,
+      });
+      if (!created.ok || typeof created.data?.ticket !== "string") {
+        sendResponse({
+          ok: false,
+          error: created.error?.message || "Could not prepare the website sign-in.",
+        });
+        return;
+      }
+
+      const exchanged = await requestApi({
+        path: "/auth/web-handoff/exchange",
+        method: "POST",
+        body: { ticket: created.data.ticket },
+        auth: false,
+      });
+      if (!exchanged.ok || typeof exchanged.data?.accessToken !== "string" || !exchanged.data.user) {
+        sendResponse({
+          ok: false,
+          error: exchanged.error?.message || "Could not complete the website sign-in.",
+        });
+        return;
+      }
+
+      await chrome.storage.local.set({
+        accessToken: exchanged.data.accessToken,
+        user: exchanged.data.user,
+      });
+      sendResponse({ ok: true, user: exchanged.data.user });
+    })().catch(() => {
+      sendResponse({ ok: false, error: "Could not complete the website sign-in." });
+    });
+    return true;
+  }
+
   if (message?.type === "bantai:api-request") {
     requestApi(message.request)
       .then(sendResponse)
