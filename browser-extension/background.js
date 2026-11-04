@@ -93,6 +93,31 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return;
       }
 
+      const websiteProfile = await requestApi({
+        path: "/auth/me",
+        auth: false,
+        authorizationToken: websiteToken,
+      });
+      if (!websiteProfile.ok || !websiteProfile.data?.user) {
+        sendResponse({
+          ok: false,
+          error: websiteProfile.error?.message || "Sign in on the BANTAI website to continue.",
+        });
+        return;
+      }
+
+      const currentProfile = await requestApi({ path: "/auth/me" });
+      if (
+        currentProfile.ok &&
+        currentProfile.data?.user?.userId === websiteProfile.data.user.userId
+      ) {
+        sendResponse({ ok: true, user: websiteProfile.data.user, reused: true });
+        return;
+      }
+      if (currentProfile.ok) {
+        await requestApi({ path: "/auth/logout", method: "POST" });
+      }
+
       const created = await requestApi({
         path: "/auth/web-handoff",
         method: "POST",

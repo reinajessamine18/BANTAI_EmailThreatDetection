@@ -18,15 +18,14 @@ history, scan details, and system settings.
 2. In Chrome, open `chrome://extensions`, enable **Developer mode**, and select
    **Load unpacked**.
 3. Select the repository's `browser-extension` folder.
-4. Sign in with the same BANTAI username or email and password used on the
-  website, or choose **Continue with website account** if you are already
-  signed in there. On first use, Chrome asks permission to access the
-  configured BANTAI website. After permission is granted, the extension can
-  reuse an open website session automatically. New users can select the website
-  registration link in the extension; registration and email verification take
-  place on the BANTAI website. Forgot-password OTP recovery and Continue with
-  Google are also available in the extension. For local development the API
-  defaults to `http://127.0.0.1:8000/api/v1`.
+4. Sign in or create an account on the BANTAI website, then open the extension.
+  For local development, the extension automatically checks signed-in website
+  sessions at `localhost` and `127.0.0.1`. For a remote website, choose
+  **Check Website Session** once and allow Chrome to access that site. The
+  extension has no separate login or signup. If no website session is found,
+  choose **Open BANTAI Website**, sign in there, then reopen the extension.
+  Password recovery and Google sign-in are handled on the website. The API
+  defaults to `http://127.0.0.1:8000/api/v1` for local development.
 5. Open an individual email in Gmail (`mail.google.com`), then open the BANTAI
    extension and choose **Scan Email for Threats**. This includes email
    notifications sent by Google Docs, such as comment or sharing alerts.
