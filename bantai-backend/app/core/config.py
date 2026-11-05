@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     # If True, startup fails when the ML model cannot be loaded.
     ml_required: bool = False
 
+    # Where the Phase 7 packaged content-only NLP artifacts live.
+    content_nlp_package_dir: Path = REPO_ROOT / "machine-learning" / "artifacts" / "packaged_content_nlp"
+    # If True, startup fails when the content-only NLP model cannot be loaded.
+    content_nlp_required: bool = False
+
     # SQLite file (created automatically on first start) and the team's SQL files.
     database_path: Path = BACKEND_DIR / "bantai.db"
     sql_dir: Path = REPO_ROOT / "bantai-database"

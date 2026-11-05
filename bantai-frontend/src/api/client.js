@@ -99,6 +99,8 @@ const FRIENDLY = {
   google_sign_in_failed: "Google sign-in could not be completed. Please try again.",
   google_sign_in_cancelled: "Google sign-in was cancelled.",
   password_setup_unavailable: "Password setup is not available for this account.",
+  degenerate_content: "The email contains no readable text to analyze.",
+  whitespace_only: "The email contains only whitespace.",
 };
 export function friendlyError(error) {
   if (error instanceof ApiError) return FRIENDLY[error.code] || error.message;
@@ -272,6 +274,26 @@ export async function scanEmail({ file, text }) {
     body = { inputMethod: "raw_text", encoding: "text", content: text ?? "" };
   }
   return json("/scans", { method: "POST", body });
+}
+
+// Scan email text using the Phase 8 Content-Only NLP model (Candidate V2 EXP-4).
+export async function scanContentOnly({ bodyText, fileName = "Gmail message", explain = true, top_k = 10 }) {
+  if (!bodyText || typeof bodyText !== "string") {
+    throw new ApiError(422, "validation_error", "Email body text is required.");
+  }
+  if (bodyText.length > 200000) {
+    throw new ApiError(413, "body_too_long", FRIENDLY.body_too_long);
+  }
+  return json("/scans/content-only", {
+    method: "POST",
+    body: {
+      bodyText,
+      fileName,
+      explain,
+      top_k,
+    },
+    auth: true,
+  });
 }
 
 // ------------------------------------------------------------------ history / dashboard

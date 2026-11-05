@@ -1,0 +1,74 @@
+{
+  "package_name": "BANTAI_Content_Only_NLP_Primary",
+  "package_version": "2.0.0-provisional",
+  "release_status": "provisional_research_candidate",
+  "candidate_experiment_id": "EXP-4",
+  "model_type": "exploratory_full_corpus_refit",
+  "created_at_utc": "2026-11-05T02:15:45Z",
+  "packaged_at_utc": "2026-11-05T04:27:00Z",
+  "framework_versions": {
+    "python": "3.9.13",
+    "scikit_learn": "1.6.1",
+    "xgboost": "2.1.4",
+    "joblib": "1.5.3",
+    "shap": "0.48.0"
+  },
+  "training_corpus": {
+    "corpus_name": "Candidate V2 Corpus",
+    "total_records": 35522,
+    "sha256": "7b5761a25cb8fe440c96207697eb010561504d53bbdbdd0c1ddf15064c0fe7c0"
+  },
+  "artifacts": {
+    "model_joblib": {
+      "filename": "model.joblib",
+      "sha256": "2d62a5a93f84ccd6decd6737781958455834271d267b4bc5dd1b83b4a02f5148",
+      "bytes": 161694
+    },
+    "model_json": {
+      "filename": "model.json",
+      "sha256": "61d86c049738e3202a0ce115d88aa4584cf63ce97d48e66eeb6f0401dabae298",
+      "bytes": 202477
+    },
+    "vectorizer_joblib": {
+      "filename": "vectorizer.joblib",
+      "sha256": "edafb4f500e0716d8c5aaf829213cb07908f1c00d9480fdebee7bbcee2b230af",
+      "bytes": 816843
+    },
+    "environment_lock": {
+      "filename": "environment_lock.json",
+      "sha256": "8fa01116b4df5f9b7394f521f2d5806301ed404c43926181c9f376df8bc394ed"
+    }
+  },
+  "specifications": {
+    "expected_feature_count": 25000,
+    "input_representation": "scipy.sparse.csr_matrix",
+    "classes": [0, 1],
+    "class_names": {
+      "0": "Legitimate",
+      "1": "Phishing"
+    },
+    "decision_threshold": 0.50,
+    "shap_base_value": -3.7383375,
+    "shap_output_space": "raw_margin",
+    "additivity_tolerance": 1e-5,
+    "max_body_chars": 200000
+  },
+  "cleaner_configuration": {
+    "url_strategy": "remove",
+    "url_placeholder": "",
+    "email_strategy": "remove",
+    "email_placeholder": "",
+    "normalize_whitespace": true,
+    "normalize_punctuation_spacing": true,
+    "preserve_case": true,
+    "extract_from_mime": false,
+    "preserve_anchor_text": true
+  },
+  "data_quality_limitations": [
+    "Training corpus contains sa_row_4038 Base64 attachment leakage contamination (row 35469).",
+    "Training corpus contains 23 candidate label-discordant Enron records (Category A phish) pending formal external adjudication.",
+    "Zero-shot diagnostic recall on modern phishing attacks is 33.00% due to cross-source temporal/lexical domain shift.",
+    "Phishing and Legitimate classes originate from distinct historical corpora (source-label confounding)."
+  ],
+  "disclaimer": "This packaged artifact is an exploratory full-corpus refit (trained on all 35,522 records) intended exclusively for deployment vocabulary coverage. In-sample training error is not a valid measure of independent generalization. Out-of-fold cross-validation metrics belong to the experimental evaluation documented in phase4_6_candidate_v2_controlled_experiments_report.md."
+}

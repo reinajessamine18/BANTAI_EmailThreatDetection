@@ -217,6 +217,37 @@ test("base64 handles a file larger than one encoding chunk", async () => {
   assert.deepEqual(new Uint8Array(Buffer.from(await api.fileToBase64(new Blob([bytes])), "base64")), bytes);
 });
 
+test("scanContentOnly sends json to /scans/content-only with bearer token", async () => {
+  reset();
+  api.setToken("auth-jwt-456");
+  await api.scanContentOnly({ bodyText: "Urgent account verification required.", fileName: "urgent.txt" });
+  assert.equal(calls.length, 1);
+  const url = new URL(calls[0].url);
+  assert.ok(url.pathname.endsWith("/scans/content-only"));
+  assert.equal(calls[0].headers.Authorization, "Bearer auth-jwt-456");
+  const body = JSON.parse(calls[0].body);
+  assert.deepEqual(body, {
+    bodyText: "Urgent account verification required.",
+    fileName: "urgent.txt",
+    explain: true,
+    top_k: 10,
+  });
+});
+
+test("scanContentOnly rejects body text over 200,000 characters before request", async () => {
+  reset();
+  const oversized = "A".repeat(200_001);
+  await assert.rejects(api.scanContentOnly({ bodyText: oversized }), (e) => e.code === "body_too_long");
+  assert.equal(calls.length, 0);
+});
+
+test("scanContentOnly rejects null or non-string body text", async () => {
+  reset();
+  await assert.rejects(api.scanContentOnly({ bodyText: "" }), (e) => e.code === "validation_error");
+  await assert.rejects(api.scanContentOnly({ bodyText: null }), (e) => e.code === "validation_error");
+  assert.equal(calls.length, 0);
+});
+
 // ---- history / dashboard / csv ----------------------------------------------------------------
 test("history filters become a clean query string; empty values are omitted", async () => {
   reset();

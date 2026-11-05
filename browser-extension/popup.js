@@ -1,4 +1,4 @@
-const app = document.querySelector("#app");
+const app = typeof document !== "undefined" ? document.querySelector("#app") : null;
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000/api/v1";
 const DEFAULT_WEB_APP_URL = "http://localhost:5173";
 
@@ -492,6 +492,52 @@ async function googleLogin() {
   }
 }
 
+function normalizeExtractionResult(extracted) {
+  if (!extracted || typeof extracted !== "object") {
+    return {
+      ok: false,
+      code: "no_response",
+      message: "No response was received from the Gmail page. Reload Gmail, open a message, and try again.",
+    };
+  }
+
+  if (!extracted.ok) {
+    return {
+      ok: false,
+      code: extracted.code || "extraction_failed",
+      message: extracted.message || "BANTAI could not read this Gmail message. Try clicking inside the message.",
+    };
+  }
+
+  // Canonicalize body text: accept canonical bodyText, support legacy body
+  const candidate = typeof extracted.bodyText === "string"
+    ? extracted.bodyText
+    : (typeof extracted.body === "string" ? extracted.body : "");
+  const bodyText = candidate.trim();
+
+  if (!bodyText) {
+    return {
+      ok: false,
+      code: "degenerate_content",
+      message: "The open message contains no readable text to analyze.",
+    };
+  }
+
+  const subject = (extracted.contextSubject || extracted.subject || "").trim();
+  const sender = (extracted.contextSender || extracted.sender || "").trim();
+
+  return {
+    ok: true,
+    bodyText,
+    contextSubject: subject,
+    contextSender: sender,
+    // Compatibility aliases
+    body: bodyText,
+    subject,
+    sender,
+  };
+}
+
 async function extractActiveEmail() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   let activeUrl;
@@ -503,18 +549,39 @@ async function extractActiveEmail() {
   if (!tab?.id || activeUrl?.origin !== "https://mail.google.com") {
     return {
       ok: false,
+      code: "invalid_tab",
       message: "Open an individual email in Gmail to begin. Gmail in Chrome is currently supported.",
     };
   }
+
+  // Attempt direct messaging first (content script already running)
+  try {
+    const directResponse = await chrome.tabs.sendMessage(tab.id, { type: "bantai:extract-active-email" });
+    if (directResponse && typeof directResponse === "object") {
+      return directResponse;
+    }
+  } catch {
+    // If not yet injected or port closed, fall back to dynamic injection
+  }
+
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ["content.js"],
     });
-    return await chrome.tabs.sendMessage(tab.id, { type: "bantai:extract-active-email" });
+    const injectedResponse = await chrome.tabs.sendMessage(tab.id, { type: "bantai:extract-active-email" });
+    if (injectedResponse && typeof injectedResponse === "object") {
+      return injectedResponse;
+    }
+    return {
+      ok: false,
+      code: "no_response",
+      message: "BANTAI could not read this Gmail tab. Reload Gmail, open a message, and try again.",
+    };
   } catch {
     return {
       ok: false,
+      code: "injection_failed",
       message: "BANTAI could not read this Gmail tab. Reload Gmail, open a message, and try again.",
     };
   }
@@ -537,13 +604,14 @@ async function showReady(error = "") {
   }
   session.user = me.data.user;
 
-  const extracted = await extractActiveEmail();
-  currentEmail = extracted?.ok ? extracted : null;
+  const rawExtracted = await extractActiveEmail();
+  const extracted = normalizeExtractionResult(rawExtracted);
+  currentEmail = extracted.ok ? extracted : null;
   const user = session.user || {};
   const emailCard = currentEmail
     ? `<article class="card message-card">
-        <h1 class="message-title">${escapeHtml(currentEmail.subject || "No subject")}</h1>
-        ${currentEmail.sender ? `<div class="message-sender">From: ${escapeHtml(currentEmail.sender)}</div>` : ""}
+        <h1 class="message-title">${escapeHtml(currentEmail.contextSubject || currentEmail.subject || "Gmail message")}</h1>
+        ${(currentEmail.contextSender || currentEmail.sender) ? `<div class="message-sender">From: ${escapeHtml(currentEmail.contextSender || currentEmail.sender)}</div>` : ""}
         <div class="message-meta"><span>Gmail · content stays in memory</span><span>READY</span></div>
       </article>`
     : `<article class="card center" style="padding:25px 16px">
@@ -568,9 +636,9 @@ async function showReady(error = "") {
       </div>
     </section>`);
 
-  app.querySelector("#profile-button").addEventListener("click", showProfile);
-  app.querySelector("#retry-extract")?.addEventListener("click", () => showReady());
-  app.querySelector("#scan-button").addEventListener("click", scanActiveEmail);
+  app?.querySelector("#profile-button")?.addEventListener("click", showProfile);
+  app?.querySelector("#retry-extract")?.addEventListener("click", () => showReady());
+  app?.querySelector("#scan-button")?.addEventListener("click", scanActiveEmail);
 }
 
 function showConnectionError(message) {
@@ -587,7 +655,7 @@ function showConnectionError(message) {
         </div>
       </article>
     </section>`);
-  app.querySelector("#retry-connection").addEventListener("click", initialize);
+  app?.querySelector("#retry-connection")?.addEventListener("click", initialize);
 }
 
 function showScanning() {
@@ -609,65 +677,105 @@ function showScanning() {
 }
 
 async function scanActiveEmail() {
-  if (!currentEmail || view === "scanning") return;
+  if (view === "scanning") return;
+
+  const normalized = normalizeExtractionResult(currentEmail);
+  if (!normalized.ok) {
+    await showReady(
+      normalized.message
+        || "The message contains no readable text to analyze. Open a valid message in Gmail and try again."
+    );
+    return;
+  }
+
   showScanning();
-  const headers = [];
-  if (currentEmail.sender) headers.push(`From: ${currentEmail.sender}`);
-  if (currentEmail.subject) headers.push(`Subject: ${currentEmail.subject}`);
-  const unshownLinks = (currentEmail.links || []).filter((url) => !currentEmail.body.includes(url));
-  const body = unshownLinks.length
-    ? `${currentEmail.body}\n\nLinks:\n${unshownLinks.join("\n")}`
-    : currentEmail.body;
-  const content = `${headers.join("\n")}${headers.length ? "\n\n" : ""}${body}`;
-  const response = await api("/scans", {
-    method: "POST",
-    body: { inputMethod: "raw_text", encoding: "text", content },
-  });
-  if (!response.ok) {
-    const message = response.error?.status === 401
-      ? "Your website session expired. Sign in on the BANTAI website to continue."
-      : response.error?.message || "The scan failed. Please try again.";
-    if (response.error?.status === 401) {
-      session.accessToken = null;
-      session.user = null;
-      showAuth(message);
-    } else {
+
+  const scanButton = app?.querySelector("#scan-button");
+  if (scanButton) scanButton.disabled = true;
+
+  try {
+    const subject = normalized.contextSubject || normalized.subject || "Gmail message";
+    const response = await api("/scans/content-only", {
+      method: "POST",
+      body: {
+        bodyText: normalized.bodyText,
+        fileName: `${subject.slice(0, 50)}.txt`,
+        explain: true,
+        top_k: 10,
+      },
+      auth: true,
+    });
+
+    if (!response.ok) {
+      const status = response.error?.status;
+      const code = response.error?.code;
+      if (status === 401) {
+        session.accessToken = null;
+        session.user = null;
+        showAuth(
+          response.error?.message
+            || "Your website session expired. Sign in on the BANTAI website to continue."
+        );
+        return;
+      }
+      let message = response.error?.message || "The scan failed. Please try again.";
+      if (status === 413 || code === "body_too_long") {
+        message = "The email's text is longer than the 200,000-character analysis limit.";
+      } else if (status === 422 || code === "degenerate_content" || code === "whitespace_only") {
+        message = "The email contains no readable text to analyze.";
+      } else if (status === 503 || code === "ml_unavailable") {
+        message = "The content-only analysis service is unavailable right now. Please try again shortly.";
+      }
       await showReady(message);
+      return;
     }
-    return;
+
+    const data = response.data;
+    if (
+      !data ||
+      !Number.isFinite(data.threatScore) ||
+      data.threatScore < 0 ||
+      data.threatScore > 100 ||
+      !Array.isArray(data.explanations)
+    ) {
+      await showReady("The BANTAI server returned an incomplete analysis. No result was displayed.");
+      return;
+    }
+
+    currentResult = data;
+    showResult();
+  } catch (err) {
+    await showReady("An unexpected error occurred while analyzing the email. Please try again.");
   }
-  const data = response.data;
-  if (
-    !data ||
-    !["safe", "suspicious", "phishing"].includes(data.riskLevel) ||
-    !Number.isFinite(data.threatScore) ||
-    data.threatScore < 0 ||
-    data.threatScore > 100 ||
-    !Array.isArray(data.explanations)
-  ) {
-    await showReady("The BANTAI server returned an incomplete analysis. No result was displayed.");
-    return;
-  }
-  currentResult = data;
-  showResult();
 }
 
 function showResult() {
   view = "result";
   const result = currentResult;
-  const risk = result.riskLevel;
+  const risk = result.riskLevel || (result.threatScore >= 80 ? "phishing" : result.threatScore >= 40 ? "suspicious" : "safe");
   const labels = { phishing: "Phishing detected", suspicious: "Suspicious email", safe: "No threat detected" };
+  const classification = result.modelClassification || (result.phishingProbability >= 0.5 ? "Phishing" : "Legitimate");
   const score = Math.round(result.threatScore);
   const probability = Number.isFinite(Number(result.phishingProbability))
     ? `${(Number(result.phishingProbability) * 100).toFixed(1)}%`
     : "Not provided";
+  const rawMargin = result.shap?.rawMargin != null && Number.isFinite(Number(result.shap.rawMargin))
+    ? `${Number(result.shap.rawMargin) > 0 ? "+" : ""}${Number(result.shap.rawMargin).toFixed(3)} log-odds`
+    : null;
   const explanations = Array.isArray(result.explanations) ? result.explanations : [];
   const explanationCards = explanations.length
-    ? explanations.slice(0, 6).map((item) => `
+    ? explanations.slice(0, 8).map((item) => {
+        const isPushingPhish = item.direction === "toward_phishing" || (Number(item.value) > 0);
+        const directionLabel = isPushingPhish ? "Toward Phishing" : "Toward Safe";
+        const valStr = Number.isFinite(Number(item.value))
+          ? ` · SHAP ${Number(item.value) > 0 ? "+" : ""}${Number(item.value).toFixed(3)} log-odds`
+          : "";
+        return `
         <article class="explanation">
-          <div class="explanation-title">${escapeHtml(item.title || item.feature || "Analysis indicator")}</div>
-          <div class="explanation-text">${escapeHtml(item.insight || item.direction || "")}${item.kind === "word" && Number.isFinite(Number(item.value)) ? ` · SHAP ${Number(item.value).toFixed(3)} log-odds` : ""}</div>
-        </article>`).join("")
+          <div class="explanation-title">${escapeHtml(item.feature || item.title || "Token attribution")}</div>
+          <div class="explanation-text">${escapeHtml(directionLabel)}${escapeHtml(valStr)}</div>
+        </article>`;
+      }).join("")
     : `<div class="notice">The analysis returned no explanation items.</div>`;
   const saveNotice = result.saved
     ? `Recorded in Threat History (${escapeHtml(result.scanCode || "scan")}).`
@@ -676,10 +784,15 @@ function showResult() {
   shell(`
     ${header(`<button class="icon-button profile-button" id="profile-button" type="button" aria-label="Open profile" title="Open profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.4 3.1-5.5 7-5.5s6.3 2.1 7 5.5"></path></svg></button>`)}
     <section class="content stack">
-      <div class="result-banner ${risk}">${labels[risk]}</div>
+      <div class="result-banner ${risk}">${escapeHtml(classification.toUpperCase())} · ${escapeHtml(labels[risk] || "")}</div>
       <div class="card score-card">
         <div><div class="score ${risk}">${escapeHtml(score)}</div><div class="score-caption">THREAT SCORE / 100</div></div>
-        <div class="score-detail"><strong>${escapeHtml(result.riskTier || "Risk tier not provided")}</strong><span class="muted small">Model phishing probability: ${escapeHtml(probability)}</span><span class="muted small">${escapeHtml(currentEmail?.subject || "Scanned Gmail message")}</span></div>
+        <div class="score-detail">
+          <strong>Risk Tier: ${escapeHtml(result.riskTier || "Low")}</strong>
+          <span class="muted small">Model: <strong>${escapeHtml(classification)}</strong> (p = ${escapeHtml(probability)})</span>
+          ${rawMargin ? `<span class="muted small">Raw Margin: ${escapeHtml(rawMargin)}</span>` : ""}
+          <span class="muted small">${escapeHtml(currentEmail?.contextSubject || currentEmail?.subject || "Scanned Gmail message")}</span>
+        </div>
       </div>
       <div>
         <h2 class="section-title">ANALYSIS EXPLANATION</h2>
@@ -687,12 +800,15 @@ function showResult() {
       </div>
       <div class="notice ${result.saved ? "success" : ""}">${saveNotice}</div>
       <button class="button button-primary" id="scan-another" type="button">SCAN ANOTHER EMAIL</button>
-      <button class="text-button small" id="history-link" type="button">Open Threat History</button>
+      <button class="text-button small" id="history-link" type="button">Open in Threat History</button>
     </section>`);
   app.querySelector("#profile-button").addEventListener("click", showProfile);
   app.querySelector("#scan-another").addEventListener("click", () => showReady());
   app.querySelector("#history-link").addEventListener("click", (event) => {
-    openAuthenticatedWebPage("/app/threat-history", event.currentTarget);
+    const targetPath = result.saved && result.scanId
+      ? `/app/threat-history/${result.scanId}`
+      : "/app/threat-history";
+    openAuthenticatedWebPage(targetPath, event.currentTarget);
   });
 }
 
@@ -756,4 +872,13 @@ async function initialize() {
   showAuth("", "No signed-in BANTAI website account was found. Sign in on the website first, then reopen the extension.");
 }
 
-initialize();
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    normalizeExtractionResult,
+    escapeHtml,
+  };
+}
+
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  initialize();
+}

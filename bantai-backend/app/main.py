@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from app.api.routes import account, auth, dashboard, health, history, scans
 from app.core.config import get_settings
 from app.db.init_db import DatabaseInitError, init_db
+from app.services.content_ml_service import load_content_ml
 from app.services.ml_service import load_ml
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -29,6 +30,12 @@ async def lifespan(app: FastAPI):
     app.state.ml_status = status
     if settings.ml_required and not status.ready:
         raise RuntimeError(f"ML component is required but not ready ({status.detail})")
+
+    # Load Phase 8 Candidate V2 EXP-4 Content-Only ML Service
+    content_status = load_content_ml(settings.content_nlp_package_dir)
+    app.state.content_ml_status = content_status
+    if settings.content_nlp_required and not content_status.ready:
+        raise RuntimeError(f"Content NLP candidate component is required but not ready ({content_status.detail})")
 
     # Create/upgrade the database from bantai-database/*.sql (idempotent). Fail fast:
     # every scan must be audit-logged, so the API must not run without a database.

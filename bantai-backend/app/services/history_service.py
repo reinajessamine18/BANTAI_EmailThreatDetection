@@ -100,15 +100,20 @@ def scan_detail(execute, user_id: int, scan_id: int, catalog: ScoringCatalog) ->
         for f in surface_indicators(values, catalog)     # current thresholds, stored values
     ]
 
+    is_content_only = bool(scan.get("version_tag") and "candidate-v2" in scan["version_tag"])
+
     return {
         "scanId": scan["scan_id"],
         "scanCode": f"BNT-{scan['scan_id']:04d}",
+        "pipeline": "content_only" if is_content_only else "multimodal",
         "saved": True,
         "riskLevel": ui_risk_level(tier),
         "riskTier": tier,
         "threatScore": scan["threat_score"],
         "phishingProbability": probability,
-        "modelClassification": "Phishing" if probability >= 0.5 else "Safe",   # the model's own 0.5 label
+        "safeProbability": round(1.0 - probability, 4) if probability is not None else None,
+        "modelClassification": "Phishing" if probability >= 0.5 else ("Legitimate" if is_content_only else "Safe"),
+        "decisionThreshold": 0.5,
         "explanations": explanations,
         "shap": {"baseValue": scan["shap_base_value"], "rawMargin": None, "unit": "log-odds", "note": SHAP_NOTE},
         "links": [
