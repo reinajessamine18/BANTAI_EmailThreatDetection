@@ -183,6 +183,9 @@ test("error shapes: detail object, validation list, network failure, non-JSON bo
 test("friendlyError maps known codes and never leaks unknown internals", () => {
   assert.match(api.friendlyError(new api.ApiError(503, "ml_unavailable", "x")), /unavailable/);
   assert.match(api.friendlyError(new api.ApiError(401, "invalid_token", "x")), /sign in again/);
+  assert.match(api.friendlyError(new api.ApiError(403, "google_account_unavailable", "x")), /deactivated or is unavailable/);
+  assert.match(api.friendlyError(new api.ApiError(400, "google_extension_not_configured", "x")), /allowlisted/);
+  assert.match(api.friendlyError(new api.ApiError(400, "google_sign_in_failed", "x")), /Google sign-in could not be completed/);
   assert.equal(api.friendlyError(new api.ApiError(403, "invalid_current_password", "Server text.")), "Server text.");
   assert.match(api.friendlyError(new TypeError("boom")), /Something went wrong/);
 });
@@ -318,4 +321,28 @@ test("a token from the previous sessionStorage behavior is migrated", () => {
   assert.equal(api.getToken(), "legacy-token");
   assert.equal(globalThis.localStorage.getItem("bantaiToken"), "legacy-token");
   assert.equal(globalThis.sessionStorage.getItem("bantaiToken"), null);
+});
+
+test("broadcastTokenToExtension sends session to chrome.runtime when available", () => {
+  let messageSent = null;
+  let targetExtensionId = null;
+
+  globalThis.chrome = {
+    runtime: {
+      sendMessage: (id, msg, callback) => {
+        targetExtensionId = id;
+        messageSent = msg;
+        if (callback) callback();
+      },
+    },
+  };
+
+  try {
+    api.broadcastTokenToExtension("test-broadcast-token");
+    assert.equal(targetExtensionId, "hpdofbbhehdgfbdloglojnfnpoeolhdj");
+    assert.equal(messageSent.type, "bantai:website-session");
+    assert.equal(messageSent.accessToken, "test-broadcast-token");
+  } finally {
+    delete globalThis.chrome;
+  }
 });

@@ -21,21 +21,75 @@ function escapeHtml(value) {
 
 function send(message) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (chrome.runtime.lastError) {
-        resolve({ error: "The BANTAI extension could not complete that action." });
-      } else {
-        resolve(response || {});
-      }
-    });
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          const errMsg = chrome.runtime.lastError.message || "The BANTAI extension could not complete that action.";
+          resolve({
+            ok: false,
+            error: errMsg,
+            detail: errMsg,
+            category: "extension_messaging_error",
+          });
+        } else {
+          resolve(response || {});
+        }
+      });
+    } catch (e) {
+      resolve({
+        ok: false,
+        error: e?.message || "Failed to communicate with the extension service worker.",
+        detail: String(e?.stack || e),
+        category: "extension_messaging_error",
+      });
+    }
   });
 }
 
-function api(path, { method = "GET", body, auth = true } = {}) {
-  return send({
+async function api(path, { method = "GET", body, auth = true } = {}) {
+  const res = await send({
     type: "bantai:api-request",
     request: { path, method, body, auth },
   });
+  if (res && res.category === "extension_messaging_error") {
+    try {
+      const baseUrl = session?.apiBaseUrl || DEFAULT_API_BASE_URL;
+      const headers = {};
+      if (body !== undefined) headers["Content-Type"] = "application/json";
+      if (auth && session?.accessToken) {
+        headers.Authorization = `Bearer ${session.accessToken}`;
+      }
+      const response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        return {
+          ok: false,
+          error: {
+            status: response.status,
+            code: data?.detail?.code || "request_failed",
+            message: data?.detail?.message || "The BANTAI request failed.",
+          },
+        };
+      }
+      if (response.status === 204) return { ok: true, data: null };
+      return { ok: true, data: await response.json() };
+    } catch {
+      return {
+        ok: false,
+        error: {
+          status: 0,
+          code: "network_error",
+          message: "Cannot reach the BANTAI server. Check the server address and connection.",
+        },
+      };
+    }
+  }
+  return res;
 }
 
 function shell(content) {
@@ -50,80 +104,372 @@ function webAppPage(path) {
   return new URL(path, session.webAppUrl || DEFAULT_WEB_APP_URL).toString();
 }
 
+function isLocalHost(hostname) {
+  const normalized = String(hostname || "").toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "[::1]";
+}
+
+function isMatchingWebAppTab(tabUrl, webAppUrl) {
+  if (typeof tabUrl !== "string" || !tabUrl.trim()) return false;
+  try {
+    const tab = new URL(tabUrl);
+    const target = new URL(webAppUrl || DEFAULT_WEB_APP_URL);
+    if (tab.protocol !== target.protocol) return false;
+    const tabHost = tab.hostname.toLowerCase();
+    const targetHost = target.hostname.toLowerCase();
+    const tabLocal = isLocalHost(tabHost);
+    const targetLocal = isLocalHost(targetHost);
+    if (targetLocal) {
+      if (!tabLocal) return false;
+    } else {
+      if (tabHost !== targetHost) return false;
+    }
+    const targetPort = target.port || (target.protocol === "https:" ? "443" : "80");
+    const tabPort = tab.port || (tab.protocol === "https:" ? "443" : "80");
+    return targetPort === tabPort;
+  } catch {
+    return false;
+  }
+}
+
 function webAppHostPatterns() {
-  const webApp = new URL(session.webAppUrl || DEFAULT_WEB_APP_URL);
+  const webApp = new URL(session?.webAppUrl || DEFAULT_WEB_APP_URL);
   if (!['http:', 'https:'].includes(webApp.protocol)) {
     throw new Error("The BANTAI website address must use HTTP or HTTPS.");
   }
   const hostnames = new Set([webApp.hostname]);
   if (webApp.hostname === "localhost") hostnames.add("127.0.0.1");
   if (webApp.hostname === "127.0.0.1") hostnames.add("localhost");
-  return [...hostnames].map((hostname) => `${webApp.protocol}//${hostname}/*`);
+  const patterns = [];
+  for (const hostname of hostnames) {
+    patterns.push(`${webApp.protocol}//${hostname}/*`);
+    if (webApp.port) {
+      patterns.push(`${webApp.protocol}//${hostname}:${webApp.port}/*`);
+    }
+  }
+  return [...new Set(patterns)];
 }
 
-async function signInWithWebsite({ requestPermission = true, silent = false } = {}) {
-  const button = app.querySelector("#connect-website");
+const lastDiagnostic = {
+  timestamp: "",
+  extensionId: "",
+  websiteOrigin: "",
+  websiteTabUrl: "",
+  websiteTabFound: false,
+  permissionsGranted: {
+    tabs: false,
+    localhost5173: false,
+    localhost8000: false,
+  },
+  scriptInjectionSucceeded: false,
+  storageMechanism: "none",
+  sessionValuePresent: false,
+  backgroundWorkerReachable: false,
+  backendRequestSent: false,
+  backendEndpoint: "",
+  backendHttpStatus: null,
+  backendUserRecognized: false,
+  extensionAcceptedSession: false,
+  errorCategory: "",
+  errorMessage: "",
+  errorDetail: "",
+};
+
+function sanitizeUrl(urlString) {
+  if (!urlString || typeof urlString !== "string") return "";
+  try {
+    const url = new URL(urlString);
+    return `${url.protocol}//${url.host}${url.pathname}`;
+  } catch {
+    return "invalid_url";
+  }
+}
+
+async function checkCurrentPermissions() {
+  const result = {
+    tabs: false,
+    localhost5173: false,
+    localhost8000: false,
+  };
+  try {
+    if (typeof chrome !== "undefined" && chrome.permissions?.contains) {
+      result.tabs = await chrome.permissions.contains({ permissions: ["tabs"] }).catch(() => false);
+      result.localhost5173 = await chrome.permissions.contains({ origins: ["http://localhost:5173/*"] }).catch(() => false);
+      result.localhost8000 = await chrome.permissions.contains({ origins: ["http://localhost:8000/*"] }).catch(() => false);
+    }
+  } catch {
+    // Ignore permission check errors
+  }
+  return result;
+}
+
+async function signInWithWebsite(options = {}) {
+  const opts = (options && typeof options === "object" && !(options instanceof (typeof Event !== "undefined" ? Event : Object)))
+    ? options
+    : {};
+  const requestPermission = opts.requestPermission ?? true;
+  const silent = opts.silent ?? false;
+
+  lastDiagnostic.timestamp = new Date().toISOString();
+  lastDiagnostic.extensionId = typeof chrome !== "undefined" && chrome.runtime?.id ? chrome.runtime.id : "unknown";
+  const webAppUrl = session?.webAppUrl || DEFAULT_WEB_APP_URL;
+  lastDiagnostic.websiteOrigin = webAppUrl;
+  lastDiagnostic.websiteTabFound = false;
+  lastDiagnostic.websiteTabUrl = "";
+  lastDiagnostic.scriptInjectionSucceeded = false;
+  lastDiagnostic.storageMechanism = "none";
+  lastDiagnostic.sessionValuePresent = false;
+  lastDiagnostic.backendRequestSent = false;
+  lastDiagnostic.backendHttpStatus = null;
+  lastDiagnostic.backendUserRecognized = false;
+  lastDiagnostic.extensionAcceptedSession = false;
+  lastDiagnostic.errorCategory = "";
+  lastDiagnostic.errorMessage = "";
+  lastDiagnostic.errorDetail = "";
+
+  const button = app?.querySelector("#connect-website");
   if (button) {
     button.disabled = true;
     button.innerHTML = `<span class="spinner"></span> Connecting...`;
   }
 
   try {
-    const origins = webAppHostPatterns();
-    if (requestPermission) {
-      const permissionGranted = await chrome.permissions.request({ origins });
-      if (!permissionGranted) {
-        if (!silent) showAuth("Allow access to your BANTAI website to use its signed-in account.");
-        return false;
+    // 1. Verify current browser permissions
+    const perms = await checkCurrentPermissions();
+    lastDiagnostic.permissionsGranted = perms;
+
+    const targetUrl = new URL(webAppUrl);
+    const isLocal = isLocalHost(targetUrl.hostname);
+
+    if (!isLocal) {
+      const origins = [`${targetUrl.protocol}//${targetUrl.hostname}/*`];
+      const hasPermission = await chrome.permissions.contains({ origins }).catch(() => false);
+      if (!hasPermission) {
+        if (requestPermission) {
+          const granted = await chrome.permissions.request({ origins }).catch(() => false);
+          if (!granted) {
+            lastDiagnostic.errorCategory = "permission_denied";
+            lastDiagnostic.errorMessage = "Allow access to your BANTAI website to use its signed-in account.";
+            if (!silent) showAuth(lastDiagnostic.errorMessage, "", "permission_denied");
+            return false;
+          }
+        } else {
+          lastDiagnostic.errorCategory = "permission_denied";
+          lastDiagnostic.errorMessage = "Permission required to access remote BANTAI website.";
+          return false;
+        }
       }
-    } else if (!await chrome.permissions.contains({ origins })) {
+    }
+
+    // 2. Discover website tabs
+    let tabs = [];
+    try {
+      if (typeof chrome !== "undefined" && chrome.tabs?.query) {
+        const allTabs = await chrome.tabs.query({});
+        if (Array.isArray(allTabs)) {
+          tabs = allTabs.filter((tab) => isMatchingWebAppTab(tab?.url, webAppUrl));
+        }
+      }
+    } catch (tabErr) {
+      lastDiagnostic.errorDetail = `chrome.tabs.query failed: ${tabErr.message}`;
+    }
+
+    if (!tabs.length && typeof chrome !== "undefined" && chrome.tabs?.query) {
+      const patterns = webAppHostPatterns();
+      for (const pattern of patterns) {
+        try {
+          const matched = await chrome.tabs.query({ url: pattern });
+          if (Array.isArray(matched)) {
+            for (const t of matched) {
+              if (t?.id && !tabs.some((existing) => existing.id === t.id)) {
+                tabs.push(t);
+              }
+            }
+          }
+        } catch {
+          // Ignore pattern query errors
+        }
+      }
+    }
+
+    lastDiagnostic.websiteTabFound = tabs.length > 0;
+    if (tabs.length > 0) {
+      lastDiagnostic.websiteTabUrl = sanitizeUrl(tabs[0].url);
+    }
+
+    if (tabs.length === 0) {
+      // Check if the extension was not reloaded after manifest permission changes
+      if (!perms.tabs && !perms.localhost5173) {
+        lastDiagnostic.errorCategory = "extension_reload_required";
+        lastDiagnostic.errorMessage = "The extension permissions were updated. Click 'RELOAD EXTENSION NOW' below to reload in Chrome.";
+      } else {
+        lastDiagnostic.errorCategory = "website_not_found";
+        lastDiagnostic.errorMessage = `No open BANTAI website tab was found (${webAppUrl}). Sign in on the website, then try again.`;
+      }
+      if (!silent) showAuth(lastDiagnostic.errorMessage, "", lastDiagnostic.errorCategory);
       return false;
     }
 
-    const tabs = [];
-    for (const pattern of origins) {
-      tabs.push(...await chrome.tabs.query({ url: pattern }));
-    }
+    // 3. Inject script to extract token
     tabs.sort((left, right) => Number(Boolean(right.active)) - Number(Boolean(left.active)));
 
     let websiteToken = "";
+    let extractionError = "";
     for (const tab of tabs) {
       if (!tab.id) continue;
-      try {
-        const [result] = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: () => window.localStorage.getItem("bantaiToken"),
-        });
-        if (typeof result?.result === "string" && result.result) {
-          websiteToken = result.result;
-          break;
+      // Try both MAIN world (page context) and ISOLATED world (content script context)
+      for (const world of ["MAIN", "ISOLATED"]) {
+        try {
+          const [result] = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world,
+            func: () => {
+              try {
+                const local = window.localStorage?.getItem("bantaiToken");
+                if (local && typeof local === "string" && local.trim()) {
+                  return { token: local.trim(), source: "localStorage" };
+                }
+                const session = window.sessionStorage?.getItem("bantaiToken");
+                if (session && typeof session === "string" && session.trim()) {
+                  return { token: session.trim(), source: "sessionStorage" };
+                }
+                return { token: null, source: "none", keys: Object.keys(window.localStorage || {}) };
+              } catch (e) {
+                return { token: null, error: e.message, source: "error" };
+              }
+            },
+          });
+
+          lastDiagnostic.scriptInjectionSucceeded = true;
+          if (result?.result?.token) {
+            websiteToken = result.result.token;
+            lastDiagnostic.storageMechanism = result.result.source;
+            lastDiagnostic.sessionValuePresent = true;
+            break;
+          } else if (result?.result?.error) {
+            extractionError = result.result.error;
+          }
+        } catch (scriptErr) {
+          extractionError = scriptErr.message;
+          if (scriptErr.message?.includes("Missing host permission") || scriptErr.message?.includes("Cannot access contents")) {
+            lastDiagnostic.errorCategory = "extension_reload_required";
+            lastDiagnostic.errorMessage = "Extension host permissions need reload. Click 'RELOAD EXTENSION NOW' below.";
+          }
         }
-      } catch {
-        // Continue checking other open BANTAI tabs.
       }
+      if (websiteToken) break;
     }
 
     if (!websiteToken) {
-      if (!silent) showAuth("No signed-in BANTAI website was found. Sign in on the website, then try again.");
+      if (lastDiagnostic.errorCategory !== "extension_reload_required") {
+        if (extractionError && (extractionError.includes("permission") || extractionError.includes("denied"))) {
+          lastDiagnostic.errorCategory = "permission_denied";
+          lastDiagnostic.errorMessage = `Could not access website storage: ${extractionError}`;
+        } else {
+          lastDiagnostic.errorCategory = "not_signed_in";
+          lastDiagnostic.errorMessage = "The BANTAI website tab is open, but no signed-in account session was found. Sign in on the website, then try again.";
+        }
+      }
+      if (!silent) showAuth(lastDiagnostic.errorMessage, "", lastDiagnostic.errorCategory);
       return false;
     }
 
-    const result = await send({ type: "bantai:website-handoff", accessToken: websiteToken });
+    // 4. Background handoff & validation
+    lastDiagnostic.backgroundWorkerReachable = true;
+    lastDiagnostic.backendRequestSent = true;
+    lastDiagnostic.backendEndpoint = "/auth/web-handoff";
+
+    let result = await send({ type: "bantai:website-handoff", accessToken: websiteToken });
+
+    // Fallback: If background messaging encounters an error (e.g. extension not yet reloaded after manifest changes),
+    // perform the exchange directly from the popup context against the backend API
+    if (!result.ok && (result.category === "extension_messaging_error" || !lastDiagnostic.backendHttpStatus)) {
+      try {
+        const baseUrl = DEFAULT_API_BASE_URL;
+        // 1. Verify user profile with website token
+        const meResp = await fetch(`${baseUrl}/auth/me`, {
+          headers: { Authorization: `Bearer ${websiteToken}` },
+          cache: "no-store",
+        });
+        if (meResp.ok) {
+          const meData = await meResp.json();
+          // 2. Request handoff ticket
+          const handoffResp = await fetch(`${baseUrl}/auth/web-handoff`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${websiteToken}` },
+            cache: "no-store",
+          });
+          if (handoffResp.ok) {
+            const handoffData = await handoffResp.json();
+            // 3. Exchange ticket for extension session
+            const exchResp = await fetch(`${baseUrl}/auth/web-handoff/exchange`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ticket: handoffData.ticket }),
+              cache: "no-store",
+            });
+            if (exchResp.ok) {
+              const exchData = await exchResp.json();
+              await chrome.storage.local.set({
+                accessToken: exchData.accessToken,
+                user: exchData.user,
+              });
+              result = { ok: true, user: exchData.user };
+            } else {
+              const errData = await exchResp.json().catch(() => ({}));
+              result = { ok: false, status: exchResp.status, error: errData.detail?.message || "Handoff ticket exchange failed." };
+            }
+          } else {
+            const errData = await handoffResp.json().catch(() => ({}));
+            result = { ok: false, status: handoffResp.status, error: errData.detail?.message || "Failed to create handoff ticket." };
+          }
+        } else {
+          result = { ok: false, status: meResp.status, category: meResp.status === 401 ? "session_expired" : "invalid_session_response", error: "The website session is not recognized or expired." };
+        }
+      } catch (directErr) {
+        lastDiagnostic.errorDetail = `Direct handoff fallback error: ${directErr.message}`;
+      }
+    }
     websiteToken = "";
+
     if (!result.ok) {
-      if (!silent) showAuth(result.error?.message || result.error || "Could not use the website session.");
+      lastDiagnostic.backendHttpStatus = result.status || (result.category === "session_expired" ? 401 : null);
+      lastDiagnostic.errorCategory = result.category || "invalid_session_response";
+      lastDiagnostic.errorMessage = result.error?.message || result.error || "Could not use the website session.";
+      lastDiagnostic.errorDetail = result.detail || lastDiagnostic.errorDetail || "";
+      if (!silent) showAuth(lastDiagnostic.errorMessage, "", lastDiagnostic.errorCategory);
       return false;
     }
+
+    lastDiagnostic.backendUserRecognized = true;
+    lastDiagnostic.backendHttpStatus = 200;
+    lastDiagnostic.extensionAcceptedSession = true;
 
     session = await send({ type: "bantai:get-session" });
     if (session.error || !session.accessToken) {
-      if (!silent) showAuth("The extension could not save the new sign-in session.");
-      return false;
+      const stored = await chrome.storage.local.get(["accessToken", "user", "apiBaseUrl", "webAppUrl"]).catch(() => ({}));
+      if (stored.accessToken) {
+        session = {
+          accessToken: stored.accessToken,
+          user: stored.user || null,
+          apiBaseUrl: stored.apiBaseUrl || DEFAULT_API_BASE_URL,
+          webAppUrl: stored.webAppUrl || DEFAULT_WEB_APP_URL,
+        };
+      } else {
+        lastDiagnostic.errorCategory = "invalid_session_response";
+        lastDiagnostic.errorMessage = "The extension could not save the new sign-in session.";
+        lastDiagnostic.errorDetail = session.error || lastDiagnostic.errorDetail;
+        if (!silent) showAuth(lastDiagnostic.errorMessage, "", lastDiagnostic.errorCategory);
+        return false;
+      }
     }
+
     await showReady();
     return true;
   } catch (error) {
-    if (!silent) showAuth(error.message || "Could not connect to the BANTAI website session.");
+    lastDiagnostic.errorCategory = "extension_error";
+    lastDiagnostic.errorMessage = error.message || "Could not connect to the BANTAI website session.";
+    if (!silent) showAuth(lastDiagnostic.errorMessage, "", "extension_error");
     return false;
   } finally {
     if (button?.isConnected) {
@@ -181,28 +527,46 @@ async function openAuthenticatedWebPage(path, trigger) {
   }
 }
 
-function showAuth(error = "", notice = "") {
+function showAuth(error = "", notice = "", category = "") {
   view = "website-required";
+  const reloadNeeded = category === "extension_reload_required" || lastDiagnostic.errorCategory === "extension_reload_required";
+  const displayMsg = error || notice;
+
   shell(`
     ${header()}
     <section class="content">
-      <article class="card center" style="padding:24px 18px">
-        <div class="avatar">⌕</div>
-        <h1 class="section-title">USE YOUR BANTAI WEBSITE ACCOUNT</h1>
-        <p class="muted">Sign in on the BANTAI website. The extension uses that account and does not have a separate login or signup.</p>
-        ${error || notice ? `<div class="notice ${error ? "error" : ""}" role="${error ? "alert" : "status"}">${escapeHtml(error || notice)}</div>` : ""}
+      <article class="card center" style="padding:20px 16px">
+        <div class="avatar">${reloadNeeded ? "⚠" : "⌕"}</div>
+        <h1 class="section-title">${reloadNeeded ? "EXTENSION RELOAD REQUIRED" : "USE YOUR BANTAI WEBSITE ACCOUNT"}</h1>
+        <p class="muted">
+          ${reloadNeeded
+            ? "New permissions were added to the extension manifest. Chrome requires reloading unpacked extensions after permission changes."
+            : "Sign in on the BANTAI website. The extension uses that account and does not have a separate login or signup."}
+        </p>
+        ${displayMsg ? `<div class="notice ${error || reloadNeeded ? "error" : ""}" role="${error ? "alert" : "status"}">${escapeHtml(displayMsg)}</div>` : ""}
         <div class="stack" style="margin-top:16px">
-          <button class="button button-primary" id="open-website-login" type="button">OPEN BANTAI WEBSITE</button>
+          ${reloadNeeded ? `<button class="button button-primary" id="reload-extension" type="button">RELOAD EXTENSION NOW</button>` : ""}
+          <button class="button ${reloadNeeded ? "button-quiet" : "button-primary"}" id="open-website-login" type="button">OPEN BANTAI WEBSITE</button>
           <button class="button button-quiet" id="connect-website" type="button">CHECK WEBSITE SESSION</button>
         </div>
+        <details class="diagnostic-details" style="margin-top:14px;font-size:11px;text-align:left;border-top:1px solid #27272a;padding-top:10px;">
+          <summary style="cursor:pointer;color:#a1a1aa;user-select:none;">Diagnostic Details</summary>
+          <pre style="background:#18181b;padding:8px;border-radius:6px;overflow:auto;margin-top:6px;font-size:10px;color:#a1a1aa;white-space:pre-wrap;word-break:break-all;">${escapeHtml(JSON.stringify(lastDiagnostic, null, 2))}</pre>
+        </details>
       </article>
     </section>`);
 
-  app.querySelector("#open-website-login").addEventListener("click", () => {
+  app.querySelector("#open-website-login")?.addEventListener("click", () => {
     chrome.tabs.create({ url: webAppPage("/login") });
   });
-  app.querySelector("#connect-website").addEventListener("click", () => {
-    signInWithWebsite({ requestPermission: true });
+  app.querySelector("#connect-website")?.addEventListener("click", () => {
+    signInWithWebsite({ requestPermission: true, silent: false });
+  });
+  app.querySelector("#reload-extension")?.addEventListener("click", () => {
+    if (typeof chrome !== "undefined" && chrome.runtime?.reload) {
+      chrome.runtime.reload();
+      if (typeof window !== "undefined") window.close();
+    }
   });
   return;
 
@@ -432,6 +796,7 @@ function googleOAuthErrorMessage(code) {
     google_sign_in_cancelled: "Google sign-in was cancelled. You can try again.",
     google_state_invalid: "The Google sign-in session expired or was invalid. Please try again.",
     google_account_link_required: "A BANTAI account already uses this email. Log in to that account instead of linking it through Google.",
+    google_account_unavailable: "This Google account has been deactivated or is unavailable.",
     google_sign_in_failed: "Google could not verify this sign-in. Please try again.",
   };
   return messages[code] || "Google sign-in could not be completed. Please try again.";
@@ -856,26 +1221,55 @@ async function logout() {
 
 async function initialize() {
   session = await send({ type: "bantai:get-session" });
-  if (session.error) {
-    shell(`${header()}<section class="content"><div class="notice error">${escapeHtml(session.error)}</div></section>`);
-    return;
+  if (session?.error) {
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        const stored = await chrome.storage.local.get(["accessToken", "user", "apiBaseUrl", "webAppUrl"]);
+        session = {
+          accessToken: stored.accessToken || null,
+          user: stored.user || null,
+          apiBaseUrl: stored.apiBaseUrl || DEFAULT_API_BASE_URL,
+          webAppUrl: stored.webAppUrl || DEFAULT_WEB_APP_URL,
+        };
+      }
+    } catch {
+      // Ignore storage error
+    }
+    if (!session || session.error) {
+      shell(`${header()}<section class="content"><div class="notice error">${escapeHtml(session?.error || "Extension storage unavailable.")}</div></section>`);
+      return;
+    }
   }
+  session ||= {};
   session.apiBaseUrl ||= DEFAULT_API_BASE_URL;
   session.webAppUrl ||= DEFAULT_WEB_APP_URL;
 
+  // 1. If the extension already has a saved access token, validate it via showReady()
+  if (session.accessToken) {
+    await showReady();
+    return;
+  }
+
+  // 2. Attempt automatic silent handoff from an open website tab
   const connected = await signInWithWebsite({ requestPermission: false, silent: true });
   if (connected) return;
 
-  await send({ type: "bantai:clear-session" });
-  session.accessToken = null;
-  session.user = null;
-  showAuth("", "No signed-in BANTAI website account was found. Sign in on the website first, then reopen the extension.");
+  // 3. Present the specific failure state and diagnostics
+  const msg = lastDiagnostic.errorMessage || "No signed-in BANTAI website account was found. Sign in on the website first, then reopen the extension.";
+  showAuth("", msg, lastDiagnostic.errorCategory);
 }
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     normalizeExtractionResult,
     escapeHtml,
+    googleOAuthErrorMessage,
+    isLocalHost,
+    isMatchingWebAppTab,
+    webAppHostPatterns,
+    sanitizeUrl,
+    checkCurrentPermissions,
+    lastDiagnostic,
   };
 }
 
