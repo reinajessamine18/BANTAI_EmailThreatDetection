@@ -16,6 +16,24 @@ export const SESSION_EXPIRED_EVENT = "bantai:session-expired";
 
 export const MAX_EML_BYTES = 5 * 1024 * 1024; // backend limit for one email
 
+export function broadcastTokenToExtension(token) {
+  if (!token || typeof globalThis.chrome?.runtime?.sendMessage !== "function") return;
+  const extensionId = import.meta.env?.VITE_EXTENSION_ID || "hpdofbbhehdgfbdloglojnfnpoeolhdj";
+  try {
+    globalThis.chrome.runtime.sendMessage(extensionId, {
+      type: "bantai:website-session",
+      accessToken: token,
+    }, () => {
+      // Safely ignore lastError if extension is not currently open or listening
+      if (globalThis.chrome?.runtime?.lastError) {
+        // Handled silently
+      }
+    });
+  } catch {
+    // Non-extension context
+  }
+}
+
 // ------------------------------------------------------------------ token
 export function getToken() {
   try {
@@ -30,7 +48,10 @@ export function getToken() {
   } catch { return null; }
 }
 export function setToken(token) {
-  try { tokenStore()?.setItem(TOKEN_KEY, token); } catch { /* storage blocked: stay signed-out */ }
+  try {
+    tokenStore()?.setItem(TOKEN_KEY, token);
+    broadcastTokenToExtension(token);
+  } catch { /* storage blocked: stay signed-out */ }
 }
 export function clearToken() {
   try {
@@ -93,12 +114,16 @@ const FRIENDLY = {
   username_already_registered: "That username is already in use.",
   google_login_unavailable: "Google sign-in is not configured on the server.",
   google_account_link_required: "Sign in to the existing account before linking Google.",
+  google_account_unavailable: "This Google account has been deactivated or is unavailable.",
+  google_extension_not_configured: "This extension is not allowlisted for Google sign-in. Contact an administrator.",
   invalid_oauth_ticket: "Google sign-in expired. Please try again.",
   invalid_web_handoff: "This sign-in link expired. Open the page from the BANTAI extension again.",
   google_state_invalid: "Google sign-in could not be verified. Please try again.",
   google_sign_in_failed: "Google sign-in could not be completed. Please try again.",
   google_sign_in_cancelled: "Google sign-in was cancelled.",
   password_setup_unavailable: "Password setup is not available for this account.",
+  degenerate_content: "The email contains no readable text to analyze.",
+  whitespace_only: "The email contains only whitespace.",
 };
 export function friendlyError(error) {
   if (error instanceof ApiError) return FRIENDLY[error.code] || error.message;
@@ -272,6 +297,26 @@ export async function scanEmail({ file, text }) {
     body = { inputMethod: "raw_text", encoding: "text", content: text ?? "" };
   }
   return json("/scans", { method: "POST", body });
+}
+
+// Scan email text using the Phase 8 Content-Only NLP model (Candidate V2 EXP-4).
+export async function scanContentOnly({ bodyText, fileName = "Gmail message", explain = true, top_k = 10 }) {
+  if (!bodyText || typeof bodyText !== "string") {
+    throw new ApiError(422, "validation_error", "Email body text is required.");
+  }
+  if (bodyText.length > 200000) {
+    throw new ApiError(413, "body_too_long", FRIENDLY.body_too_long);
+  }
+  return json("/scans/content-only", {
+    method: "POST",
+    body: {
+      bodyText,
+      fileName,
+      explain,
+      top_k,
+    },
+    auth: true,
+  });
 }
 
 // ------------------------------------------------------------------ history / dashboard

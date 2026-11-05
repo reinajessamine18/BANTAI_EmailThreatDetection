@@ -33,8 +33,11 @@ from typing import Optional
 logger = logging.getLogger("bantai.db")
 
 MIN_SQLITE = (3, 31, 0)  # generated columns (scans.scan_code)
-BASELINE_VERSION_TAG = "baseline-tfidf-xgb-v1"
-_BASELINE_DIR = Path("artifacts") / "baseline"
+BASELINE_VERSION_TAG = "modern-tfidf-xgb-v1"
+_BASELINE_DIR = Path("artifacts") / "modern_baseline"
+
+CONTENT_NLP_VERSION_TAG = "candidate-v2-exp4-refit"
+_CONTENT_NLP_DIR = Path("artifacts") / "packaged_content_nlp"
 
 
 class DatabaseInitError(RuntimeError):
@@ -46,6 +49,7 @@ class InitResult:
     created: bool = False
     schema_version: int = 0
     model_registered: bool = False
+    content_model_registered: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +103,8 @@ def _validate_google_v9_database(conn: sqlite3.Connection) -> None:
             "schema-9 migration found non-Google accounts without password hashes; "
             "the database was not changed."
         )
+
+
     extra_objects = conn.execute(
         "SELECT COUNT(*) FROM sqlite_master "
         "WHERE tbl_name = 'users' AND type IN ('index', 'trigger') "
@@ -194,7 +200,7 @@ def register_baseline_model(conn: sqlite3.Connection, ml_dir: Path) -> bool:
             "random_state": config.get("random_state"),
         }
     )
-    base = "machine-learning/artifacts/baseline"  # repo-relative; no machine-specific paths
+    base = "machine-learning/artifacts/modern_baseline"  # repo-relative; no machine-specific paths
 
     try:
         conn.execute("UPDATE model_versions SET is_active = 0 WHERE is_active = 1")
@@ -205,7 +211,7 @@ def register_baseline_model(conn: sqlite3.Connection, ml_dir: Path) -> bool:
             " VALUES (?, 'XGBoost', 'shap.TreeExplainer', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
             (
                 BASELINE_VERSION_TAG,
-                "Balanced_Dataset.csv (deduplicated; see dataset_preparation_manifest.json)",
+                "modern_email_dataset.csv (35k sample, bigrams)",
                 config.get("train_rows"),
                 metrics.get("accuracy"),
                 metrics.get("precision"),
@@ -215,6 +221,72 @@ def register_baseline_model(conn: sqlite3.Connection, ml_dir: Path) -> bool:
                 hyperparameters,
                 f"{base}/xgboost_model.pkl",
                 f"{base}/tfidf_vectorizer.pkl",
+                _now(),
+                notes,
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return True
+
+
+def register_content_nlp_model(conn: sqlite3.Connection, ml_dir: Path) -> bool:
+    """Record the Phase 7 packaged Candidate V2 EXP-4 model in `model_versions`.
+
+    Registered with is_active = 0 to preserve the legacy active model
+    (modern-tfidf-xgb-v1) and avoid violating ux_model_one_active.
+    Returns False if already registered or if artifacts are not found.
+    """
+    pkg_dir = Path(ml_dir) / _CONTENT_NLP_DIR
+    manifest_path = pkg_dir / "model_manifest.json"
+    model_path = pkg_dir / "model.joblib"
+    vectorizer_path = pkg_dir / "vectorizer.joblib"
+
+    if not (manifest_path.is_file() and model_path.is_file() and vectorizer_path.is_file()):
+        logger.warning("Content NLP packaged artifacts not found; model_versions left unchanged")
+        return False
+
+    if conn.execute(
+        "SELECT 1 FROM model_versions WHERE version_tag = ?", (CONTENT_NLP_VERSION_TAG,)
+    ).fetchone():
+        return False
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    metrics = manifest.get("cross_validation_metrics", {})
+    provenance = manifest.get("provenance", {})
+    notes = (
+        "Phase 7 packaged Candidate V2 EXP-4 refit model with on-demand SHAP TreeExplainer. "
+        "Registered with is_active = 0 to preserve legacy active model. "
+        f"SHA-256 model={_sha256(model_path)} vectorizer={_sha256(vectorizer_path)}"
+    )
+    hyperparameters = json.dumps(
+        {
+            "tfidf_params": manifest.get("vectorizer_configuration"),
+            "model_architecture": manifest.get("model_architecture"),
+        }
+    )
+    base = "machine-learning/artifacts/packaged_content_nlp"
+
+    try:
+        conn.execute(
+            "INSERT INTO model_versions (version_tag, algorithm, explainer_type, training_dataset,"
+            " n_training_samples, accuracy, precision_score, recall_score, f1_score, roc_auc,"
+            " hyperparameters, model_artifact_path, scaler_artifact_path, is_active, deployed_at, notes)"
+            " VALUES (?, 'XGBoost', 'shap.TreeExplainer', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            (
+                CONTENT_NLP_VERSION_TAG,
+                "candidate_corpus_v2.csv (35,522 records)",
+                provenance.get("total_training_records", 35522),
+                metrics.get("mean_accuracy", 0.9944),
+                metrics.get("mean_precision", 0.9439),
+                metrics.get("mean_recall", 0.9399),
+                metrics.get("mean_f1", 0.9419),
+                metrics.get("mean_roc_auc", 0.9781),
+                hyperparameters,
+                f"{base}/model.joblib",
+                f"{base}/vectorizer.joblib",
                 _now(),
                 notes,
             ),
@@ -271,6 +343,7 @@ def init_db(
                 _check_existing_version(conn, result.schema_version, db_path.name, sql_dir)
             if ml_dir is not None:
                 result.model_registered = register_baseline_model(conn, Path(ml_dir))
+                result.content_model_registered = register_content_nlp_model(conn, Path(ml_dir))
         finally:
             conn.close()
 
@@ -284,8 +357,8 @@ def init_db(
         raise DatabaseInitError(f"database initialization failed ({type(exc).__name__})") from exc
 
     logger.info(
-        "database ready (created=%s, schema_version=%s, model_registered=%s)",
-        result.created, result.schema_version, result.model_registered,
+        "database ready (created=%s, schema_version=%s, model_registered=%s, content_model_registered=%s)",
+        result.created, result.schema_version, result.model_registered, result.content_model_registered,
     )
     return result
 

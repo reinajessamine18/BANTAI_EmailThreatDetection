@@ -39,7 +39,7 @@ import shap
 # Configuration
 # ---------------------------------------------------------------------------
 ML_DIR = Path(__file__).resolve().parents[2]        # machine-learning/
-DEFAULT_ARTIFACTS_DIR = ML_DIR / "artifacts" / "baseline"
+DEFAULT_ARTIFACTS_DIR = ML_DIR / "artifacts" / "modern_baseline"
 VECTORIZER_FILENAME = "tfidf_vectorizer.pkl"
 MODEL_FILENAME = "xgboost_model.pkl"
 
@@ -240,7 +240,11 @@ class BaselinePredictor:
             Path(artifacts_dir) if artifacts_dir is not None else DEFAULT_ARTIFACTS_DIR
         )
         vectorizer_path = artifacts_dir / VECTORIZER_FILENAME
+        if not vectorizer_path.is_file() and (artifacts_dir / "vectorizer.pkl").is_file():
+            vectorizer_path = artifacts_dir / "vectorizer.pkl"
         model_path = artifacts_dir / MODEL_FILENAME
+        if not model_path.is_file() and (artifacts_dir / "xgboost_model.json").is_file():
+            model_path = artifacts_dir / "xgboost_model.json"
 
         if not vectorizer_path.is_file():
             raise FileNotFoundError(f"vectorizer artifact not found: {vectorizer_path}")
@@ -249,7 +253,12 @@ class BaselinePredictor:
 
         # Read-only load. No fit/retrain/tune, no artifact writes.
         vectorizer = joblib.load(vectorizer_path)
-        model = joblib.load(model_path)
+        if str(model_path).endswith(".json"):
+            import xgboost as xgb
+            model = xgb.XGBClassifier()
+            model.load_model(str(model_path))
+        else:
+            model = joblib.load(model_path)
 
         classes = np.asarray(model.classes_)
         if NEGATIVE_LABEL not in classes or POSITIVE_LABEL not in classes:

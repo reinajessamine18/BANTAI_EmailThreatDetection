@@ -11,6 +11,9 @@ function normalizeBaseUrl(value) {
   ) {
     throw new Error("Use HTTPS for non-local BANTAI servers.");
   }
+  if (parsed.hostname === "localhost" && (!parsed.port || parsed.port === "8000")) {
+    parsed.hostname = "127.0.0.1";
+  }
   parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   parsed.search = "";
   parsed.hash = "";
@@ -53,19 +56,25 @@ async function requestApi({ path, method = "GET", body, auth = true, authorizati
 
   let response;
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
     response = await fetch(`${baseUrl}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
+      signal: controller.signal,
     });
-  } catch {
+    clearTimeout(timer);
+  } catch (fetchErr) {
     return {
       ok: false,
       error: {
         status: 0,
         code: "network_error",
-        message: "Cannot reach the BANTAI server. Check the server address and connection.",
+        message: fetchErr?.name === "AbortError"
+          ? "Request timed out reaching the BANTAI server."
+          : "Cannot reach the BANTAI server. Check the server address and connection.",
       },
     };
   }
@@ -82,94 +91,108 @@ async function requestApi({ path, method = "GET", body, auth = true, authorizati
   return { ok: true, data: await response.json() };
 }
 
+async function performWebsiteHandoff(websiteToken) {
+  if (!websiteToken || typeof websiteToken !== "string") {
+    return { ok: false, error: "The website session is unavailable.", category: "not_signed_in" };
+  }
+
+  const websiteProfile = await requestApi({
+    path: "/auth/me",
+    auth: false,
+    authorizationToken: websiteToken,
+  });
+  if (!websiteProfile.ok || !websiteProfile.data?.user) {
+    const is401 = websiteProfile.error?.status === 401;
+    return {
+      ok: false,
+      error: websiteProfile.error?.message || "Sign in on the BANTAI website to continue.",
+      category: is401 ? "session_expired" : (websiteProfile.error?.code === "network_error" ? "backend_unavailable" : "invalid_session_response"),
+      status: websiteProfile.error?.status || 0,
+    };
+  }
+
+  const currentProfile = await requestApi({ path: "/auth/me" });
+  if (
+    currentProfile.ok &&
+    currentProfile.data?.user?.userId === websiteProfile.data.user.userId
+  ) {
+    return { ok: true, user: websiteProfile.data.user, reused: true };
+  }
+  if (currentProfile.ok) {
+    await requestApi({ path: "/auth/logout", method: "POST" });
+  }
+
+  const created = await requestApi({
+    path: "/auth/web-handoff",
+    method: "POST",
+    auth: false,
+    authorizationToken: websiteToken,
+  });
+  if (!created.ok || typeof created.data?.ticket !== "string") {
+    return {
+      ok: false,
+      error: created.error?.message || "Could not prepare the website sign-in.",
+      category: created.error?.code === "network_error" ? "backend_unavailable" : "invalid_session_response",
+      status: created.error?.status || 0,
+    };
+  }
+
+  const exchanged = await requestApi({
+    path: "/auth/web-handoff/exchange",
+    method: "POST",
+    body: { ticket: created.data.ticket },
+    auth: false,
+  });
+  if (!exchanged.ok || typeof exchanged.data?.accessToken !== "string" || !exchanged.data.user) {
+    return {
+      ok: false,
+      error: exchanged.error?.message || "Could not complete the website sign-in.",
+      category: exchanged.error?.code === "network_error" ? "backend_unavailable" : "invalid_session_response",
+      status: exchanged.error?.status || 0,
+    };
+  }
+
+  await chrome.storage.local.set({
+    accessToken: exchanged.data.accessToken,
+    user: exchanged.data.user,
+  });
+  return { ok: true, user: exchanged.data.user };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "bantai:website-handoff") {
     (async () => {
-      const websiteToken = typeof message.accessToken === "string"
-        ? message.accessToken
-        : "";
-      if (!websiteToken) {
-        sendResponse({ ok: false, error: "The website session is unavailable." });
-        return;
-      }
-
-      const websiteProfile = await requestApi({
-        path: "/auth/me",
-        auth: false,
-        authorizationToken: websiteToken,
-      });
-      if (!websiteProfile.ok || !websiteProfile.data?.user) {
+      try {
+        const res = await performWebsiteHandoff(message.accessToken);
+        sendResponse(res || { ok: false, error: "Empty handoff response" });
+      } catch (err) {
         sendResponse({
           ok: false,
-          error: websiteProfile.error?.message || "Sign in on the BANTAI website to continue.",
+          error: err?.message || "Could not complete the website sign-in.",
+          category: "extension_error",
+          detail: String(err?.stack || err),
         });
-        return;
       }
-
-      const currentProfile = await requestApi({ path: "/auth/me" });
-      if (
-        currentProfile.ok &&
-        currentProfile.data?.user?.userId === websiteProfile.data.user.userId
-      ) {
-        sendResponse({ ok: true, user: websiteProfile.data.user, reused: true });
-        return;
-      }
-      if (currentProfile.ok) {
-        await requestApi({ path: "/auth/logout", method: "POST" });
-      }
-
-      const created = await requestApi({
-        path: "/auth/web-handoff",
-        method: "POST",
-        auth: false,
-        authorizationToken: websiteToken,
-      });
-      if (!created.ok || typeof created.data?.ticket !== "string") {
-        sendResponse({
-          ok: false,
-          error: created.error?.message || "Could not prepare the website sign-in.",
-        });
-        return;
-      }
-
-      const exchanged = await requestApi({
-        path: "/auth/web-handoff/exchange",
-        method: "POST",
-        body: { ticket: created.data.ticket },
-        auth: false,
-      });
-      if (!exchanged.ok || typeof exchanged.data?.accessToken !== "string" || !exchanged.data.user) {
-        sendResponse({
-          ok: false,
-          error: exchanged.error?.message || "Could not complete the website sign-in.",
-        });
-        return;
-      }
-
-      await chrome.storage.local.set({
-        accessToken: exchanged.data.accessToken,
-        user: exchanged.data.user,
-      });
-      sendResponse({ ok: true, user: exchanged.data.user });
-    })().catch(() => {
-      sendResponse({ ok: false, error: "Could not complete the website sign-in." });
-    });
+    })();
     return true;
   }
 
   if (message?.type === "bantai:api-request") {
-    requestApi(message.request)
-      .then(sendResponse)
-      .catch(() => {
+    (async () => {
+      try {
+        const res = await requestApi(message.request);
+        sendResponse(res);
+      } catch (err) {
         sendResponse({
           ok: false,
           error: {
             status: 0,
             code: "extension_error",
-            message: "The extension could not complete the request.",
+            message: err?.message || "The extension could not complete the request.",
           },
         });
-      });
+      }
+    })();
     return true;
   }
 
@@ -217,3 +240,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return false;
 });
+
+if (chrome.runtime.onMessageExternal) {
+  chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
+    if (message?.type === "bantai:website-session" && typeof message.accessToken === "string") {
+      (async () => {
+        try {
+          const res = await performWebsiteHandoff(message.accessToken);
+          sendResponse(res || { ok: false, error: "Empty handoff response" });
+        } catch (err) {
+          sendResponse({
+            ok: false,
+            error: err?.message || "Could not complete the website sign-in.",
+            category: "extension_error",
+          });
+        }
+      })();
+      return true;
+    }
+    return false;
+  });
+}

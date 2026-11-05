@@ -55,6 +55,7 @@ OTP_MAX_SENDS_PER_HOUR = 5
 RESET_AUTH_TTL_MINUTES = 10
 OAUTH_STATE_TTL_MINUTES = 10
 OAUTH_TICKET_TTL_MINUTES = 2
+OAUTH_CLOCK_SKEW_SECONDS = 30
 
 
 def _normalized_email(value: str) -> str:
@@ -898,17 +899,18 @@ def _google_claims(code: str, nonce_hash: str, settings: Settings) -> dict[str, 
         raw_id_token,
         GoogleRequest(),
         settings.google_client_id,
+        clock_skew_in_seconds=OAUTH_CLOCK_SKEW_SECONDS,
     )
     if not isinstance(claims, dict):
         raise ValueError("Google identity token claims were invalid.")
     audience = claims.get("aud")
-    audiences = [audience] if isinstance(audience, str) else audience
+    audiences = [audience] if isinstance(audience, str) else (audience or [])
     expires = claims.get("exp")
     if (
         settings.google_client_id not in audiences
         or claims.get("iss") not in {"accounts.google.com", "https://accounts.google.com"}
         or not isinstance(expires, (int, float))
-        or expires <= _now().timestamp()
+        or expires + OAUTH_CLOCK_SKEW_SECONDS <= _now().timestamp()
         or not isinstance(claims.get("nonce"), str)
         or not hmac.compare_digest(token_hash(claims["nonce"]), nonce_hash)
         or claims.get("email_verified") is not True
@@ -1022,7 +1024,15 @@ def google_callback(
         db.commit()
     except (requests.RequestException, GoogleAuthError, ValueError) as exc:
         db.rollback()
-        logger.warning("Google sign-in failed (%s)", type(exc).__name__)
+        if isinstance(exc, requests.HTTPError) and exc.response is not None:
+            logger.warning(
+                "Google sign-in failed (%s: %s): %s",
+                type(exc).__name__,
+                exc.response.status_code,
+                exc.response.text,
+            )
+        else:
+            logger.warning("Google sign-in failed (%s): %s", type(exc).__name__, exc)
         return _google_error_redirect(
             settings, "google_sign_in_failed", state_record.extension_redirect_uri
         )
@@ -1038,7 +1048,9 @@ def google_callback(
         )
     except IntegrityError:
         db.rollback()
-        return _google_error_redirect(settings, "google_account_link_required")
+        return _google_error_redirect(
+            settings, "google_account_link_required", state_record.extension_redirect_uri
+        )
 
     target = state_record.extension_redirect_uri or (
         f"{settings.frontend_base_url.rstrip('/')}/login"

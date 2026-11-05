@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -25,7 +26,8 @@ import ThreatHistory from "./components/ThreatHistory";
 import Settings from "./components/Settings";
 
 import RequireAuth from "./components/RequireAuth";
-import ScanDetail from "./components/ScanDetail"; //newly
+import ScanDetail from "./components/ScanDetail";
+import { broadcastTokenToExtension, getToken } from "./api/client";
 
 function LandingPage() {
   return (
@@ -48,6 +50,26 @@ function LandingPage() {
 }
 
 function App() {
+  useEffect(() => {
+    const handleSync = () => {
+      const token = getToken();
+      if (token) {
+        broadcastTokenToExtension(token);
+        document.documentElement.setAttribute("data-bantai-authenticated", "true");
+      } else {
+        document.documentElement.removeAttribute("data-bantai-authenticated");
+      }
+    };
+
+    handleSync();
+    window.addEventListener("bantai:request-session", handleSync);
+    window.addEventListener("storage", handleSync);
+    return () => {
+      window.removeEventListener("bantai:request-session", handleSync);
+      window.removeEventListener("storage", handleSync);
+    };
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>

@@ -190,7 +190,7 @@ def test_google_state_is_required_and_consumed_once(monkeypatch):
     [
         {"aud": "another-client"},
         {"iss": "https://attacker.example"},
-        {"exp": time.time() - 1},
+        {"exp": time.time() - 3600},
         {"nonce": "different-nonce"},
         {"email_verified": False},
     ],
@@ -211,7 +211,7 @@ def test_google_identity_claims_are_checked(monkeypatch, change):
     monkeypatch.setattr(
         auth_routes.id_token,
         "verify_oauth2_token",
-        lambda _raw, _request, _audience: identity,
+        lambda _raw, _request, _audience, **_kwargs: identity,
     )
 
     with pytest.raises(ValueError):
@@ -238,7 +238,7 @@ def test_google_identity_claims_accept_a_valid_verified_token(monkeypatch):
     monkeypatch.setattr(
         auth_routes.id_token,
         "verify_oauth2_token",
-        lambda _raw, _request, _audience: identity,
+        lambda _raw, _request, _audience, **_kwargs: identity,
     )
 
     verified = auth_routes._google_claims(
@@ -247,6 +247,117 @@ def test_google_identity_claims_accept_a_valid_verified_token(monkeypatch):
         get_settings(),
     )
     assert verified["sub"] == "stable-google-subject"
+
+
+def test_google_claims_passes_clock_skew_to_id_token_verifier(monkeypatch):
+    configure_google(monkeypatch)
+    captured = {}
+
+    class TokenResponse:
+        def raise_for_status(self):
+            pass
+
+        @staticmethod
+        def json():
+            return {"id_token": "signed-id-token"}
+
+    monkeypatch.setattr(auth_routes.requests, "post", lambda *_args, **_kwargs: TokenResponse())
+
+    def fake_verify(raw, req, aud, **kwargs):
+        captured["raw"] = raw
+        captured["aud"] = aud
+        captured["clock_skew_in_seconds"] = kwargs.get("clock_skew_in_seconds")
+        return claims()
+
+    monkeypatch.setattr(auth_routes.id_token, "verify_oauth2_token", fake_verify)
+
+    auth_routes._google_claims(
+        "auth-code",
+        auth_security.token_hash("expected-nonce"),
+        get_settings(),
+    )
+
+    assert captured["clock_skew_in_seconds"] == auth_routes.OAUTH_CLOCK_SKEW_SECONDS
+    assert captured["clock_skew_in_seconds"] >= 15
+
+
+def test_google_clock_skew_tolerance_accepts_token_issued_in_slight_future():
+    from google.auth import exceptions as g_exc
+    from google.auth import jwt as g_jwt
+
+    now = time.time()
+    # Simulate a token whose 'iat' is 2 seconds in the future due to server clock drift
+    future_token_payload = {
+        "iat": int(now) + 2,
+        "exp": int(now) + 3600,
+    }
+
+    # Without clock skew tolerance (0s), this raises InvalidValue
+    with pytest.raises(g_exc.InvalidValue, match="Token used too early"):
+        g_jwt._verify_iat_and_exp(future_token_payload, clock_skew_in_seconds=0)
+
+    # With configured clock skew tolerance, verification succeeds cleanly
+    g_jwt._verify_iat_and_exp(
+        future_token_payload,
+        clock_skew_in_seconds=auth_routes.OAUTH_CLOCK_SKEW_SECONDS,
+    )
+
+
+def test_google_identity_claims_handles_list_audience_and_missing_audience(monkeypatch):
+    configure_google(monkeypatch)
+
+    class TokenResponse:
+        def raise_for_status(self):
+            pass
+
+        @staticmethod
+        def json():
+            return {"id_token": "signed-id-token"}
+
+    monkeypatch.setattr(auth_routes.requests, "post", lambda *_args, **_kwargs: TokenResponse())
+
+    # List audience containing our client id should succeed
+    monkeypatch.setattr(
+        auth_routes.id_token,
+        "verify_oauth2_token",
+        lambda _raw, _request, _audience, **_kwargs: claims(aud=["test-client-id", "other-app"]),
+    )
+    res = auth_routes._google_claims("code", auth_security.token_hash("expected-nonce"), get_settings())
+    assert res["sub"] == "stable-google-subject"
+
+    # None audience should raise ValueError safely without TypeError crash
+    monkeypatch.setattr(
+        auth_routes.id_token,
+        "verify_oauth2_token",
+        lambda _raw, _request, _audience, **_kwargs: claims(aud=None),
+    )
+    with pytest.raises(ValueError, match="claims failed validation"):
+        auth_routes._google_claims("code", auth_security.token_hash("expected-nonce"), get_settings())
+
+
+def test_google_callback_integrity_error_preserves_extension_redirect_uri(monkeypatch):
+    configure_google(monkeypatch)
+    ext_uri = "https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/oauth2"
+    monkeypatch.setattr(
+        auth_routes,
+        "_google_claims",
+        lambda _code, _nonce_hash, _settings: claims(),
+    )
+    from sqlalchemy.exc import IntegrityError as SqlIntegrityError
+
+    def crash_create(*_args, **_kwargs):
+        raise SqlIntegrityError("INSERT", {}, Exception("Duplicate key"))
+
+    monkeypatch.setattr(auth_routes, "_get_or_create_google_user", crash_create)
+
+    with make_client(monkeypatch) as client:
+        state, _nonce = begin_google_login(client, extension_redirect_uri=ext_uri)
+        res = callback(client, state)
+
+    assert res.status_code == 303
+    redirect = urlparse(res.headers["location"])
+    assert f"{redirect.scheme}://{redirect.netloc}{redirect.path}" == ext_uri
+    assert parse_qs(redirect.query)["error"] == ["google_account_link_required"]
 
 
 def test_existing_google_user_can_add_password_without_changing_account_id(monkeypatch):
@@ -289,3 +400,25 @@ def test_existing_google_user_can_add_password_without_changing_account_id(monke
     assert setup.json()["user"]["userId"] == login.json()["user"]["userId"]
     assert db_rows("SELECT COUNT(*) FROM users") == [(1,)]
     assert db_rows("SELECT auth_provider FROM users") == [("google",)]
+
+
+def test_google_callback_logs_warning_and_redirects_on_claims_failure(monkeypatch, caplog):
+    import logging
+    configure_google(monkeypatch)
+
+    def failing_claims(*_args, **_kwargs):
+        raise ValueError("Token used too early, 100 < 105.")
+
+    monkeypatch.setattr(auth_routes, "_google_claims", failing_claims)
+
+    with caplog.at_level(logging.WARNING):
+        with make_client(monkeypatch) as client:
+            state, _nonce = begin_google_login(client)
+            res = callback(client, state)
+
+    assert res.status_code == 303
+    redirect = urlparse(res.headers["location"])
+    assert redirect.path == "/login"
+    assert parse_qs(redirect.query)["error"] == ["google_sign_in_failed"]
+    # Verify the warning contains the detailed exception message
+    assert any("Token used too early" in record.message for record in caplog.records)

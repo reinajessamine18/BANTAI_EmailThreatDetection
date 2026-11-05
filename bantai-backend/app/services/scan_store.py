@@ -13,7 +13,7 @@ Privacy:
 from __future__ import annotations
 
 import json
-from typing import Optional, Tuple
+from typing import Iterable, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -34,6 +34,18 @@ def active_model(session: Session) -> Optional[Tuple[int, str]]:
     row = session.execute(
         select(ModelVersion.model_version_id, ModelVersion.version_tag).where(
             ModelVersion.is_active.is_(True)
+        )
+    ).first()
+    return (row[0], row[1]) if row else None
+
+
+def candidate_model(
+    session: Session, tag: str = "candidate-v2-exp4-refit"
+) -> Optional[Tuple[int, str]]:
+    """(model_version_id, version_tag) of the candidate model, or None."""
+    row = session.execute(
+        select(ModelVersion.model_version_id, ModelVersion.version_tag).where(
+            ModelVersion.version_tag == tag
         )
     ).first()
     return (row[0], row[1]) if row else None
@@ -121,6 +133,74 @@ def save_scan(
         feature = catalog.features.get(key)
         if feature is not None:
             session.add(ScanFeature(scan_id=scan.scan_id, feature_id=feature.feature_id, raw_value=value))
+    session.flush()
+    return scan
+
+
+def save_content_scan(
+    session: Session,
+    *,
+    user_id: Optional[int],
+    model_version_id: int,
+    file_name: Optional[str],
+    body_char_count: int,
+    content_sha256: str,
+    phishing_probability: float,
+    threat_score: int,
+    risk_tier: str,
+    shap_base_value: Optional[float],
+    inference_ms: int,
+    scanned_at: str,
+    token_explanations: Iterable,
+) -> Scan:
+    """Insert a content-only scan and its children.
+
+    Zero body persistence: raw email text is never written.
+    Guests (user_id is None): token contributions are not persisted for guest scans.
+    Authenticated users: persists top-10 token contributions.
+    """
+    token_rows = []
+    if user_id is not None:
+        token_rows = [
+            ScanTokenContribution(
+                abs_rank=e.rank,
+                token=e.token,
+                contribution=e.contribution,
+                direction=e.direction,
+                tfidf_value=e.tfidf_value,
+                insight_type=e.insight_type,
+                insight_title=e.title,
+                insight_message=e.message,
+            )
+            for e in token_explanations
+        ]
+
+    scan = Scan(
+        user_id=user_id,
+        model_version_id=model_version_id,
+        input_method="raw_text",
+        file_name=file_name,
+        file_size_bytes=body_char_count,
+        content_sha256=content_sha256,
+        body_char_count=body_char_count,
+        subject="[Content-Only Scan]" if user_id is not None else None,
+        sender_address=None,
+        sender_domain=None,
+        return_path_domain=None,
+        spf_result=None,
+        dkim_result=None,
+        dmarc_result=None,
+        url_count=0,
+        malicious_probability=phishing_probability,
+        threat_score=threat_score,
+        risk_tier=risk_tier,
+        shap_base_value=shap_base_value,
+        inference_ms=inference_ms,
+        scanned_at=scanned_at,
+        urls=[],
+        token_contributions=token_rows,
+    )
+    session.add(scan)
     session.flush()
     return scan
 
