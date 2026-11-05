@@ -18,12 +18,14 @@ history, scan details, and system settings.
 2. In Chrome, open `chrome://extensions`, enable **Developer mode**, and select
    **Load unpacked**.
 3. Select the repository's `browser-extension` folder.
-4. Log in with the same BANTAI username or email and password used on the
-   website. New users can select the website registration link in the extension;
-   registration and email verification take place on the BANTAI website.
-   Forgot-password OTP recovery and Continue with Google are also available in
-   the extension. For local development the API defaults to
-   `http://127.0.0.1:8000/api/v1`.
+4. Sign in or create an account on the BANTAI website, then open the extension.
+  For local development, the extension automatically checks signed-in website
+  sessions at `localhost` and `127.0.0.1`. For a remote website, choose
+  **Check Website Session** once and allow Chrome to access that site. The
+  extension has no separate login or signup. If no website session is found,
+  choose **Open BANTAI Website**, sign in there, then reopen the extension.
+  Password recovery and Google sign-in are handled on the website. The API
+  defaults to `http://127.0.0.1:8000/api/v1` for local development.
 5. Open an individual email in Gmail (`mail.google.com`), then open the BANTAI
    extension and choose **Scan Email for Threats**. This includes email
    notifications sent by Google Docs, such as comment or sharing alerts.
@@ -37,8 +39,13 @@ history, scan details, and system settings.
 - Message contents are held in popup memory for the current interaction and are
   not written to extension storage. The backend handles analysis, results, and
   its existing scan-history/audit behavior.
-- The extension stores the existing BANTAI bearer session token and connection
-  URLs using `chrome.storage.local`; it never stores the user's password.
+- The extension stores its own BANTAI bearer session token and connection URLs
+  using `chrome.storage.local`; it never stores the user's password. When you
+  choose the website-session option, the website token is used only in memory to
+  exchange a short-lived, single-use ticket and is not saved by the extension.
+- Website-session reuse requests access only to the configured BANTAI website.
+  The extension checks open matching tabs; it does not read Gmail for the
+  sign-in handoff.
 - Dashboard, Threat History, and System Settings open the configured BANTAI
   website with a short-lived, single-use sign-in link. The extension token is
   never placed in the website URL; the website removes the handoff ticket from

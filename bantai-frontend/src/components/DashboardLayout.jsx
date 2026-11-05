@@ -3,7 +3,9 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   House,
   Clock,
+  Menu,
   Settings,
+  X,
 } from "lucide-react";
 import { getProfile, logout } from "../api/client";
 
@@ -13,6 +15,7 @@ function DashboardLayout() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const loadUser = async () => {
   try {
@@ -104,14 +107,50 @@ function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-zinc-800 bg-zinc-950 px-4 sm:px-6 lg:hidden">
+        <span className="text-xl font-black italic tracking-tight text-white">
+          BANTAI<span className="text-lime-400">.</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => setIsMobileNavOpen(true)}
+          aria-label="Open navigation"
+          aria-expanded={isMobileNavOpen}
+          aria-controls="app-navigation"
+          className="rounded-md p-2 text-zinc-300 transition hover:bg-zinc-900 hover:text-white"
+        >
+          <Menu aria-hidden="true" size={22} />
+        </button>
+      </header>
+
+      {isMobileNavOpen && (
+        <button
+          type="button"
+          onClick={() => setIsMobileNavOpen(false)}
+          aria-label="Close navigation"
+          className="fixed inset-0 z-40 bg-black/70 lg:hidden"
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-zinc-800 bg-zinc-950">
-        <div className="flex h-20 items-center border-b border-zinc-800 px-6">
+      <aside
+        id="app-navigation"
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-zinc-800 bg-zinc-950 transition-transform duration-200 lg:translate-x-0 ${isMobileNavOpen ? "translate-x-0" : "-translate-x-full"}`}
+      >
+        <div className="flex h-20 items-center justify-between border-b border-zinc-800 px-6">
           <div className="flex items-center gap-3">
             <span className="text-xl font-black italic tracking-tight text-white">
               BANTAI<span className="text-lime-400">.</span>
             </span>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsMobileNavOpen(false)}
+            aria-label="Close navigation"
+            className="rounded-md p-2 text-zinc-400 transition hover:bg-zinc-900 hover:text-white lg:hidden"
+          >
+            <X aria-hidden="true" size={20} />
+          </button>
         </div>
 
         {/* Navigation */}
@@ -124,6 +163,7 @@ function DashboardLayout() {
                 <NavLink
                   key={item.path}
                   to={item.path}
+                  onClick={() => setIsMobileNavOpen(false)}
                   className={({ isActive }) =>
                     [
                       "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-bold transition",
@@ -151,7 +191,10 @@ function DashboardLayout() {
         <div className="border-t border-zinc-800 p-4">
           <button
             type="button"
-            onClick={() => navigate("/app/settings")}
+            onClick={() => {
+              setIsMobileNavOpen(false);
+              navigate("/app/settings");
+            }}
             aria-label={`Open account profile settings for ${displayName}`}
             className="mb-4 flex w-full items-center gap-3 rounded-lg bg-zinc-900/70 p-3 text-left transition hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
           >
@@ -180,7 +223,10 @@ function DashboardLayout() {
 
           <button
             type="button"
-            onClick={() => setShowLogoutConfirmation(true)}
+            onClick={() => {
+              setIsMobileNavOpen(false);
+              setShowLogoutConfirmation(true);
+            }}
             className="flex w-full items-center rounded-lg px-3 py-3 text-sm font-medium text-zinc-500 transition hover:bg-red-500/10 hover:text-red-400"
           >
             <span>Log Out</span>
@@ -231,8 +277,8 @@ function DashboardLayout() {
       )}
 
       {/* Main */}
-      <main className="ml-64 min-h-screen bg-black">
-        <div className="px-8 py-8">
+      <main className="min-w-0 bg-black lg:ml-64">
+        <div className="min-w-0 px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
           <Outlet />
         </div>
       </main>

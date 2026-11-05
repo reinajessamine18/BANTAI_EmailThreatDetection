@@ -6,9 +6,6 @@ let session = null;
 let currentEmail = null;
 let currentResult = null;
 let currentError = "";
-let authStep = "login";
-let authEmail = "";
-let resetAuthorization = null;
 let view = "loading";
 let profileReturnView = "ready";
 
@@ -51,6 +48,89 @@ function header(action = "") {
 
 function webAppPage(path) {
   return new URL(path, session.webAppUrl || DEFAULT_WEB_APP_URL).toString();
+}
+
+function webAppHostPatterns() {
+  const webApp = new URL(session.webAppUrl || DEFAULT_WEB_APP_URL);
+  if (!['http:', 'https:'].includes(webApp.protocol)) {
+    throw new Error("The BANTAI website address must use HTTP or HTTPS.");
+  }
+  const hostnames = new Set([webApp.hostname]);
+  if (webApp.hostname === "localhost") hostnames.add("127.0.0.1");
+  if (webApp.hostname === "127.0.0.1") hostnames.add("localhost");
+  return [...hostnames].map((hostname) => `${webApp.protocol}//${hostname}/*`);
+}
+
+async function signInWithWebsite({ requestPermission = true, silent = false } = {}) {
+  const button = app.querySelector("#connect-website");
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = `<span class="spinner"></span> Connecting...`;
+  }
+
+  try {
+    const origins = webAppHostPatterns();
+    if (requestPermission) {
+      const permissionGranted = await chrome.permissions.request({ origins });
+      if (!permissionGranted) {
+        if (!silent) showAuth("Allow access to your BANTAI website to use its signed-in account.");
+        return false;
+      }
+    } else if (!await chrome.permissions.contains({ origins })) {
+      return false;
+    }
+
+    const tabs = [];
+    for (const pattern of origins) {
+      tabs.push(...await chrome.tabs.query({ url: pattern }));
+    }
+    tabs.sort((left, right) => Number(Boolean(right.active)) - Number(Boolean(left.active)));
+
+    let websiteToken = "";
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      try {
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => window.localStorage.getItem("bantaiToken"),
+        });
+        if (typeof result?.result === "string" && result.result) {
+          websiteToken = result.result;
+          break;
+        }
+      } catch {
+        // Continue checking other open BANTAI tabs.
+      }
+    }
+
+    if (!websiteToken) {
+      if (!silent) showAuth("No signed-in BANTAI website was found. Sign in on the website, then try again.");
+      return false;
+    }
+
+    const result = await send({ type: "bantai:website-handoff", accessToken: websiteToken });
+    websiteToken = "";
+    if (!result.ok) {
+      if (!silent) showAuth(result.error?.message || result.error || "Could not use the website session.");
+      return false;
+    }
+
+    session = await send({ type: "bantai:get-session" });
+    if (session.error || !session.accessToken) {
+      if (!silent) showAuth("The extension could not save the new sign-in session.");
+      return false;
+    }
+    await showReady();
+    return true;
+  } catch (error) {
+    if (!silent) showAuth(error.message || "Could not connect to the BANTAI website session.");
+    return false;
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = "CHECK WEBSITE SESSION";
+    }
+  }
 }
 
 async function openAuthenticatedWebPage(path, trigger) {
@@ -102,6 +182,30 @@ async function openAuthenticatedWebPage(path, trigger) {
 }
 
 function showAuth(error = "", notice = "") {
+  view = "website-required";
+  shell(`
+    ${header()}
+    <section class="content">
+      <article class="card center" style="padding:24px 18px">
+        <div class="avatar">⌕</div>
+        <h1 class="section-title">USE YOUR BANTAI WEBSITE ACCOUNT</h1>
+        <p class="muted">Sign in on the BANTAI website. The extension uses that account and does not have a separate login or signup.</p>
+        ${error || notice ? `<div class="notice ${error ? "error" : ""}" role="${error ? "alert" : "status"}">${escapeHtml(error || notice)}</div>` : ""}
+        <div class="stack" style="margin-top:16px">
+          <button class="button button-primary" id="open-website-login" type="button">OPEN BANTAI WEBSITE</button>
+          <button class="button button-quiet" id="connect-website" type="button">CHECK WEBSITE SESSION</button>
+        </div>
+      </article>
+    </section>`);
+
+  app.querySelector("#open-website-login").addEventListener("click", () => {
+    chrome.tabs.create({ url: webAppPage("/login") });
+  });
+  app.querySelector("#connect-website").addEventListener("click", () => {
+    signInWithWebsite({ requestPermission: true });
+  });
+  return;
+
   view = "auth";
   const login = authStep === "login";
   const reset = authStep.startsWith("reset-");
@@ -144,7 +248,8 @@ function showAuth(error = "", notice = "") {
     "reset-password": "Save New Password",
   }[authStep];
   const contextButtons = login
-    ? `<div class="auth-divider"><span>OR</span></div>
+     ? `<button class="button button-google" type="button" id="website-login">Continue with website account</button>
+       <div class="auth-divider"><span>OR</span></div>
        <button class="button button-google" type="button" id="google-login"><span aria-hidden="true" class="google-mark">G</span><span>Continue with Google</span></button>
        <div class="signup-prompt"><p>New to BANTAI?</p>
        <a class="auth-link" id="website-signup" target="_blank" rel="noopener noreferrer">Create an account on our website</a></div>`
@@ -200,6 +305,7 @@ function showAuth(error = "", notice = "") {
   if (signupLink) {
     signupLink.href = webAppPage("/signup");
   }
+  app.querySelector("#website-login")?.addEventListener("click", signInWithWebsite);
   app.querySelector("#show-login")?.addEventListener("click", () => {
     authStep = "login";
     resetAuthorization = null;
@@ -417,15 +523,13 @@ async function extractActiveEmail() {
 async function showReady(error = "") {
   view = "ready";
   currentError = error;
-  const [me] = await Promise.all([
-    session.accessToken ? api("/auth/me") : Promise.resolve({ ok: false }),
-  ]);
+  const me = session.accessToken ? await api("/auth/me") : { ok: false };
   if (!me.ok) {
     if (me.error?.status === 401) {
       await send({ type: "bantai:clear-session" });
       session.accessToken = null;
       session.user = null;
-      showAuth("Your BANTAI session expired. Log in again to continue.");
+      showAuth("", "Your website session expired. Sign in on the BANTAI website, then reconnect.");
     } else {
       showConnectionError(me.error?.message || "The BANTAI server is unavailable.");
     }
@@ -453,7 +557,7 @@ async function showReady(error = "") {
     ${header(`<button class="icon-button profile-button" id="profile-button" type="button" aria-label="Open profile" title="Open profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.4 3.1-5.5 7-5.5s6.3 2.1 7 5.5"></path></svg></button>`)}
     <section class="content">
       <div class="status-row">
-        <span class="account">${escapeHtml(user.fullName || user.email || "BANTAI ACCOUNT")}</span>
+        <span style="color:#fff;font-size:14px;font-weight:700;line-height:1.4">Welcome back, ${escapeHtml(user.fullName || user.email || "BANTAI user")}</span>
       </div>
       ${currentError ? `<div class="notice error" role="alert">${escapeHtml(currentError)}</div>` : ""}
       ${emailCard}
@@ -521,7 +625,7 @@ async function scanActiveEmail() {
   });
   if (!response.ok) {
     const message = response.error?.status === 401
-      ? "Your BANTAI session expired. Sign in again to continue."
+      ? "Your website session expired. Sign in on the BANTAI website to continue."
       : response.error?.message || "The scan failed. Please try again.";
     if (response.error?.status === 401) {
       session.accessToken = null;
@@ -631,9 +735,7 @@ async function logout() {
   session.user = null;
   currentEmail = null;
   currentResult = null;
-  authStep = "login";
-  resetAuthorization = null;
-  showAuth();
+  showAuth("", "Extension session cleared. Reconnect your signed-in website account to scan.");
 }
 
 async function initialize() {
@@ -644,24 +746,14 @@ async function initialize() {
   }
   session.apiBaseUrl ||= DEFAULT_API_BASE_URL;
   session.webAppUrl ||= DEFAULT_WEB_APP_URL;
-  if (!session.accessToken) {
-    showAuth();
-    return;
-  }
-  const me = await api("/auth/me");
-  if (!me.ok) {
-    if (me.error?.status === 401) {
-      await send({ type: "bantai:clear-session" });
-      session.accessToken = null;
-      session.user = null;
-      showAuth("Your BANTAI session expired. Log in again to continue.");
-    } else {
-      showConnectionError(me.error?.message || "The BANTAI server is unavailable.");
-    }
-    return;
-  }
-  session.user = me.data.user;
-  await showReady();
+
+  const connected = await signInWithWebsite({ requestPermission: false, silent: true });
+  if (connected) return;
+
+  await send({ type: "bantai:clear-session" });
+  session.accessToken = null;
+  session.user = null;
+  showAuth("", "No signed-in BANTAI website account was found. Sign in on the website first, then reopen the extension.");
 }
 
 initialize();
